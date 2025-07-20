@@ -483,6 +483,9 @@
                     <h3 class="text-lg font-bold mt-4 mb-2">무역 후 이익</h3>
                     <p id="trade-gains-result"></p>
                 </div>
+                <div class="flex justify-center space-x-2 mt-4">
+                    <button id="trade-quiz-btn" class="bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-2 px-4 rounded-md transition w-full md:w-1/2">퀴즈 풀기</button>
+                </div>
             </div>
 
             <!-- 시나리오 관리 패널 -->
@@ -1018,7 +1021,7 @@
                         const deltaX = mouseX - lastMousePos.x;
                         const deltaQ = (deltaX / (width - margin.left - margin.right)) * 110;
                         if (dragging === 'demand') state.demand.intercept += deltaQ;
-                        else if (dragging === 'supply') state.supply.intercept += deltaQ;
+                        else if (dragging === 'supply') state.supply.intercept -= deltaQ;
                         update();
                     }
                     lastMousePos = { x: mouseX, y: mouseY };
@@ -1038,7 +1041,8 @@
                 const questions = [
                     { q: "소득이 증가하면 일반적으로 수요 곡선은 어떻게 될까요?", options: ["오른쪽으로 이동", "왼쪽으로 이동", "곡선상에서 이동", "변화 없음"], answer: 0, explanation: "소득 증가는 대표적인 수요 증가 요인입니다. 동일한 가격에서 더 많은 양을 소비하려 하므로 수요 곡선이 오른쪽으로 이동합니다." },
                     { q: "생산 기술의 발전은 공급 곡선에 어떤 영향을 미칠까요?", options: ["왼쪽으로 이동", "오른쪽으로 이동", "곡선상에서 이동", "변화 없음"], answer: 1, explanation: "기술 발전은 생산 비용을 절감시켜 동일한 가격에서 더 많은 양을 공급할 수 있게 합니다. 따라서 공급 곡선이 오른쪽으로 이동합니다." },
-                    { q: "상품의 가격이 균형 가격보다 높을 때 시장에는 어떤 현상이 발생할까요?", options: ["초과 수요", "초과 공급", "균형", "알 수 없음"], answer: 1, explanation: "가격이 균형보다 높으면 공급량은 수요량을 초과하게 되어 '초과 공급'이 발생합니다. 이는 재고가 쌓이는 현상으로 나타납니다." }
+                    { q: "상품의 가격이 균형 가격보다 높을 때 시장에는 어떤 현상이 발생할까요?", options: ["초과 수요", "초과 공급", "균형", "알 수 없음"], answer: 1, explanation: "가격이 균형보다 높으면 공급량은 수요량을 초과하게 되어 '초과 공급'이 발생합니다. 이는 재고가 쌓이는 현상으로 나타납니다." },
+                    { q: "대체재인 콜라의 가격이 오르면 사이다의 수요는 어떻게 될까요?", options: ["수요 증가 (오른쪽 이동)", "수요 감소 (왼쪽 이동)", "변화 없음"], answer: 0, explanation: "콜라와 사이다는 대체 관계입니다. 콜라 가격이 오르면 사람들이 콜라 대신 사이다를 더 많이 찾게 되어 사이다의 수요가 증가합니다." }
                 ];
                 const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
                 let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
@@ -1079,7 +1083,7 @@
                 ctx.scale(dpr, dpr);
                 width = canvas.width / dpr;
                 height = canvas.height / dpr;
-                margin = { top: 30, right: 70, bottom: 40, left: 60 };
+                margin = { top: 30, right: 70, bottom: 55, left: 60 }; // bottom margin increased
                 if (Object.keys(state).length === 0) resetState();
                 else update();
             }
@@ -1225,6 +1229,38 @@
                     ctx.fillStyle = '#f97316';
                     ctx.fillText(Math.round(currentQs), toCanvasX(currentQs) - 10, toCanvasY(currentP) + 20);
                 }
+
+                if (state.showDemand && state.showSupply) {
+                    const eq = calculateEquilibrium(state.demand, state.supply);
+                    drawEquilibriumPoint(eq.price, eq.quantity, '#059669', '균형');
+                }
+            }
+
+            function drawEquilibriumPoint(p, q, color, label) {
+                const x = toCanvasX(q);
+                const y = toCanvasY(p);
+                drawPoint(x, y, color);
+                
+                ctx.fillStyle = color;
+                ctx.font = 'bold 12px Noto Sans KR';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'bottom';
+                
+                const text = `${label} (Q:${Math.round(q)}, P:${Math.round(p)})`;
+                const textMetrics = ctx.measureText(text);
+                
+                let textX = x + 10;
+                let textY = y - 10;
+
+                if (textX + textMetrics.width > width - margin.right) {
+                    textX = x - 10;
+                    ctx.textAlign = 'right';
+                }
+                if (textY - 12 < margin.top) {
+                    textY = y + 20;
+                    ctx.textBaseline = 'top';
+                }
+                ctx.fillText(text, textX, textY);
             }
 
             function drawCurve(curve, color, label) {
@@ -1314,7 +1350,8 @@
             function showQuiz() {
                  const questions = [
                     { q: "수요의 가격탄력성이 1보다 큰 재화는 무엇이라고 할까요?", options: ["필수재", "사치재", "열등재", "정상재"], answer: 1, explanation: "수요의 가격탄력성이 1보다 큰 경우 '탄력적'이라고 하며, 이는 가격 변화에 수요량이 민감하게 반응하는 것을 의미합니다. 사치재가 대표적인 예입니다." },
-                    { q: "공급의 가격탄력성에 영향을 미치는 요인이 아닌 것은?", options: ["생산 기간", "재화의 성격", "소비자의 소득", "저장 가능성"], answer: 2, explanation: "소비자의 소득은 수요에 영향을 미치는 요인입니다. 생산 기간이 짧을수록, 저장이 용이할수록 공급은 더 탄력적이 됩니다." }
+                    { q: "공급의 가격탄력성에 영향을 미치는 요인이 아닌 것은?", options: ["생산 기간", "재화의 성격", "소비자의 소득", "저장 가능성"], answer: 2, explanation: "소비자의 소득은 수요에 영향을 미치는 요인입니다. 생산 기간이 짧을수록, 저장이 용이할수록 공급은 더 탄력적이 됩니다." },
+                    { q: "수요가 비탄력적인 상품의 가격을 인상하면, 판매자의 총수입은 어떻게 될까요?", options: ["증가한다", "감소한다", "변함없다"], answer: 0, explanation: "비탄력적 상품은 가격이 올라도 수요량이 조금밖에 줄지 않습니다. 따라서 가격 상승률이 수요량 감소율보다 커서 총수입(가격x수량)은 증가합니다." }
                 ];
                 const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
                 let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
@@ -1702,7 +1739,8 @@
             function showQuiz() {
                 const questions = [
                     { q: "수요가 완전 비탄력적일 때, 생산자에게 세금을 부과하면 누가 세금을 모두 부담할까요?", options: ["소비자", "생산자", "반반 부담", "정부"], answer: 0, explanation: "수요가 완전 비탄력적이면 소비자는 가격 변화에 반응하지 않으므로, 생산자는 세금 전액을 가격에 전가할 수 있습니다. 따라서 소비자가 모든 세금을 부담합니다." },
-                    { q: "시장 균형 가격보다 낮은 수준에서 가격상한제를 실시하면 어떤 현상이 발생할까요?", options: ["초과 공급", "초과 수요", "자중손실 없음", "생산량 증가"], answer: 1, explanation: "효과적인 가격상한제는 가격을 균형보다 낮게 설정하여 수요량을 늘리고 공급량을 줄여 초과 수요를 발생시킵니다." }
+                    { q: "시장 균형 가격보다 낮은 수준에서 가격상한제를 실시하면 어떤 현상이 발생할까요?", options: ["초과 공급", "초과 수요", "자중손실 없음", "생산량 증가"], answer: 1, explanation: "효과적인 가격상한제는 가격을 균형보다 낮게 설정하여 수요량을 늘리고 공급량을 줄여 초과 수요를 발생시킵니다." },
+                    { q: "가격상한제를 시장 균형 가격보다 높게 설정하면 시장에 어떤 일이 발생할까요?", options: ["초과 수요", "초과 공급", "아무 효과가 없다"], answer: 2, explanation: "가격상한제는 설정된 가격 이상으로 거래하지 못하게 하는 제도입니다. 이미 시장 가격이 그보다 낮은 상태이므로, 아무런 영향을 미치지 못합니다." }
                 ];
                 const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
                 let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
@@ -1852,6 +1890,27 @@
                 const eq = calculateEquilibrium(state.ad, state.as);
                 const eqX = toCanvasX(eq.gdp);
                 const eqY = toCanvasY(eq.price);
+
+                // Draw Inflation/Deflation Gap
+                const gdpGap = eq.gdp - state.naturalGdp;
+                if (Math.abs(gdpGap) > 2) {
+                    const x1 = toCanvasX(Math.min(eq.gdp, state.naturalGdp));
+                    const x2 = toCanvasX(Math.max(eq.gdp, state.naturalGdp));
+                    const y = height - margin.bottom;
+                    
+                    const isInflationary = gdpGap > 0;
+                    ctx.fillStyle = isInflationary ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)';
+                    ctx.fillRect(x1, margin.top, x2 - x1, y - margin.top);
+
+                    ctx.fillStyle = isInflationary ? '#b91c1c' : '#1d4ed8';
+                    ctx.font = 'bold 12px Noto Sans KR';
+                    ctx.textAlign = 'center';
+                    const gapLabel = isInflationary ? '인플레이션 갭' : '디플레이션 갭';
+                    ctx.fillText(gapLabel, x1 + (x2 - x1) / 2, margin.top + 15);
+                    ctx.textAlign = 'start';
+                }
+
+                // Draw equilibrium point and lines on top of the gap
                 ctx.beginPath();
                 ctx.arc(eqX, eqY, 6, 0, 2 * Math.PI);
                 ctx.fillStyle = '#7c3aed';
@@ -1865,6 +1924,14 @@
                 ctx.strokeStyle = '#7c3aed';
                 ctx.stroke();
                 ctx.setLineDash([]);
+                
+                // Draw equilibrium label
+                ctx.fillStyle = '#7c3aed';
+                ctx.font = 'bold 12px Noto Sans KR';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(`(Y:${Math.round(eq.gdp)}, P:${Math.round(eq.price)})`, eqX + 8, eqY - 8);
+
             }
 
             function updateUI() {
@@ -1876,10 +1943,10 @@
                 let unemploymentStatus, statusText;
                 if (gdpGap > 2) {
                     unemploymentStatus = '낮음 (자연실업률 이하)';
-                    statusText = '경기가 과열되어 인플레이션 압력이 높습니다. (인플레이션 갭)';
+                    statusText = `경기가 과열되어 인플레이션 압력이 높습니다. (인플레이션 갭: ${Math.round(gdpGap)})`;
                 } else if (gdpGap < -2) {
                     unemploymentStatus = '높음 (자연실업률 이상)';
-                    statusText = '경기가 침체되어 실업률이 높습니다. (디플레이션 갭)';
+                    statusText = `경기가 침체되어 실업률이 높습니다. (디플레이션 갭: ${Math.round(Math.abs(gdpGap))})`;
                 } else {
                     unemploymentStatus = '자연실업률 수준';
                     statusText = '경제가 장기 균형 상태에 있습니다.';
@@ -1913,7 +1980,8 @@
             function showQuiz() {
                 const questions = [
                     { q: "정부 지출이 증가하면 총수요(AD) 곡선은 어떻게 이동할까요?", options: ["오른쪽 이동", "왼쪽 이동", "이동 없음"], answer: 0, explanation: "정부 지출 증가는 총수요의 구성요소(C+I+G+NX) 중 G를 증가시켜 AD 곡선을 오른쪽으로 이동시킵니다." },
-                    { q: "국제 유가가 급등하면 단기 총공급(AS) 곡선은 어떻게 될까요?", options: ["오른쪽 이동", "왼쪽 이동", "이동 없음"], answer: 1, explanation: "유가 상승은 기업의 생산 비용을 증가시켜, 각 물가 수준에서 공급량을 감소시킵니다. 이는 AS 곡선을 왼쪽으로 이동시키는 요인입니다. (스태그플레이션 유발)" }
+                    { q: "국제 유가가 급등하면 단기 총공급(AS) 곡선은 어떻게 될까요?", options: ["오른쪽 이동", "왼쪽 이동", "이동 없음"], answer: 1, explanation: "유가 상승은 기업의 생산 비용을 증가시켜, 각 물가 수준에서 공급량을 감소시킵니다. 이는 AS 곡선을 왼쪽으로 이동시키는 요인입니다. (스태그플레이션 유발)" },
+                    { q: "총수요는 그대로인데 총공급 곡선만 왼쪽으로 이동하면 어떤 현상이 발생할까요?", options: ["디플레이션", "스태그플레이션", "하이퍼인플레이션"], answer: 1, explanation: "총공급이 감소하면 생산량(GDP)은 줄고 물가는 상승하는 현상, 즉 스태그플레이션이 발생합니다." }
                 ];
                 const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
                 let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
@@ -1999,6 +2067,16 @@
                 return { exchangeRate, quantity };
             }
 
+            function drawPoint(x, y, color) {
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
             function draw() {
                 ctx.clearRect(0, 0, width, height);
                 // Draw grid and axes
@@ -2027,7 +2105,9 @@
                 ctx.textAlign = 'start';
                 ctx.textBaseline = 'alphabetic';
                 ctx.fillText('환율(원/달러)', margin.left - 65, margin.top + 5);
-                ctx.fillText('외환 거래량', width - margin.right - 20, height - margin.bottom + 20);
+                ctx.textAlign = 'right';
+                ctx.fillText('외환 거래량', width - margin.right, height - margin.bottom + 25);
+                ctx.textAlign = 'start';
 
                 const drawCurve = (curve, color, label) => {
                     ctx.beginPath();
@@ -2055,10 +2135,8 @@
                 const eq = calculateEquilibrium(state.demand, state.supply);
                 const eqX = toCanvasX(eq.quantity);
                 const eqY = toCanvasY(eq.exchangeRate);
-                ctx.beginPath();
-                ctx.arc(eqX, eqY, 6, 0, 2 * Math.PI);
-                ctx.fillStyle = '#16a34a';
-                ctx.fill();
+                drawPoint(eqX, eqY, '#16a34a');
+                
                 ctx.beginPath();
                 ctx.setLineDash([2, 3]);
                 ctx.moveTo(eqX, eqY);
@@ -2068,6 +2146,13 @@
                 ctx.strokeStyle = '#16a34a';
                 ctx.stroke();
                 ctx.setLineDash([]);
+
+                // Draw equilibrium label
+                ctx.fillStyle = '#16a34a';
+                ctx.font = 'bold 12px Noto Sans KR';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(`(Q:${Math.round(eq.quantity)}, ${Math.round(eq.exchangeRate)}원)`, eqX + 8, eqY - 8);
             }
 
             function updateUI() {
@@ -2121,7 +2206,8 @@
             function showQuiz() {
                 const questions = [
                     { q: "국내 기업의 수출이 크게 증가하면 외환시장에서 어떤 변화가 나타날까요?", options: ["외화 공급 증가, 환율 하락", "외화 수요 증가, 환율 상승", "외화 공급 감소, 환율 상승"], answer: 0, explanation: "수출 증가는 국내로 들어오는 외화(달러)의 양을 늘리므로 외화 공급 곡선이 오른쪽으로 이동합니다. 공급이 늘어나면 외화의 가치, 즉 환율은 하락합니다." },
-                    { q: "환율이 상승(원화 가치 하락)할 때 유리한 경제 주체는?", options: ["수입업자", "수출업자", "해외 여행객"], answer: 1, explanation: "환율이 상승하면 같은 1달러짜리 상품을 팔아도 더 많은 원화를 받게 되므로 수출업자에게 유리합니다. 반면 수입업자는 더 많은 원화를 지불해야 하므로 불리합니다." }
+                    { q: "환율이 상승(원화 가치 하락)할 때 유리한 경제 주체는?", options: ["수입업자", "수출업자", "해외 여행객"], answer: 1, explanation: "환율이 상승하면 같은 1달러짜리 상품을 팔아도 더 많은 원화를 받게 되므로 수출업자에게 유리합니다. 반면 수입업자는 더 많은 원화를 지불해야 하므로 불리합니다." },
+                    { q: "미국의 기준금리가 한국보다 훨씬 높아지면 원/달러 환율은 어떻게 될까요?", options: ["상승한다", "하락한다", "변함없다"], answer: 0, explanation: "미국 금리가 높아지면 더 높은 수익을 얻기 위해 달러에 대한 수요가 늘어납니다. 이는 외화 수요 곡선을 오른쪽으로 이동시켜 환율을 상승시키는 요인이 됩니다." }
                 ];
                 const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
                 let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
@@ -2326,14 +2412,13 @@
             }
 
             function showQuiz() {
-                const q = {
-                    q: "생산가능곡선 위의 한 점은 무엇을 의미할까요?",
-                    options: ["생산이 불가능한 상태", "자원을 낭비하고 있는 비효율적 상태", "자원을 최대한 활용한 효율적 상태", "알 수 없음"],
-                    answer: 2,
-                    explanation: "생산가능곡선(PPC) 위의 모든 점은 주어진 자원과 기술을 최대한 활용하여 생산할 수 있는 상품의 조합, 즉 효율적인 생산 상태를 나타냅니다."
-                };
-                let html = `<p class="mb-4">${q.q}</p><div id="quiz-options" class="space-y-2">`;
-                q.options.forEach((opt, index) => {
+                const questions = [
+                    { q: "생산가능곡선 위의 한 점은 무엇을 의미할까요?", options: ["생산이 불가능한 상태", "자원을 낭비하고 있는 비효율적 상태", "자원을 최대한 활용한 효율적 상태", "알 수 없음"], answer: 2, explanation: "생산가능곡선(PPC) 위의 모든 점은 주어진 자원과 기술을 최대한 활용하여 생산할 수 있는 상품의 조합, 즉 효율적인 생산 상태를 나타냅니다." },
+                    { q: "생산가능곡선이 원점에 대해 오목한 이유는 무엇일까요?", options: ["기회비용 체증의 법칙 때문", "기회비용 체감의 법칙 때문", "비교우위 원리 때문"], answer: 0, explanation: "한 재화를 더 많이 생산할수록 그 재화 생산에 적합한 자원부터 사용하게 되므로, 포기해야 하는 다른 재화의 양(기회비용)이 점점 늘어나기 때문입니다." }
+                ];
+                const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
+                let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
+                currentQuestion.options.forEach((opt, index) => {
                     html += `<button class="quiz-option block w-full text-left p-2 border rounded hover:bg-gray-100" data-index="${index}">${opt}</button>`;
                 });
                 html += `</div><div id="quiz-result" class="mt-4 p-2 rounded"></div>`;
@@ -2343,11 +2428,11 @@
                     if (e.target.classList.contains('quiz-option')) {
                         const selectedIndex = parseInt(e.target.dataset.index);
                         const resultEl = document.getElementById('quiz-result');
-                        if (selectedIndex === q.answer) {
-                            resultEl.innerHTML = `<p class="text-green-600 font-bold">정답입니다!</p><p class="text-sm">${q.explanation}</p>`;
+                        if (selectedIndex === currentQuestion.answer) {
+                            resultEl.innerHTML = `<p class="text-green-600 font-bold">정답입니다!</p><p class="text-sm">${currentQuestion.explanation}</p>`;
                             resultEl.className = 'mt-4 p-2 rounded bg-green-50 border border-green-200';
                         } else {
-                            resultEl.innerHTML = `<p class="text-red-600 font-bold">오답입니다.</p><p class="text-sm">${q.explanation}</p>`;
+                            resultEl.innerHTML = `<p class="text-red-600 font-bold">오답입니다.</p><p class="text-sm">${currentQuestion.explanation}</p>`;
                              resultEl.className = 'mt-4 p-2 rounded bg-red-50 border border-red-200';
                         }
                         document.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
@@ -2383,6 +2468,7 @@
             const oppCostA = document.getElementById('opp-cost-A');
             const oppCostB = document.getElementById('opp-cost-B');
             const simulateBtn = document.getElementById('trade-simulate-btn');
+            const quizBtn = document.getElementById('trade-quiz-btn');
             const resultPanel = document.getElementById('trade-result');
             const absAdvResult = document.getElementById('absolute-advantage-result');
             const compAdvResult = document.getElementById('comparative-advantage-result');
@@ -2424,9 +2510,40 @@
                     tradeGainsResult.textContent = '두 국가의 기회비용이 같아 무역의 이익이 발생하지 않습니다.';
                 }
             }
+
+            function showQuiz() {
+                 const questions = [
+                    { q: "다른 나라보다 더 적은 생산요소를 투입하여 상품을 생산할 수 있는 능력을 무엇이라고 할까요?", options: ["비교우위", "절대우위", "공정무역"], answer: 1, explanation: "절대우위는 생산성의 절대적인 차이를 의미합니다. 더 적은 자원으로 같은 양을 생산하면 절대우위에 있습니다." },
+                    { q: "기회비용이 더 낮은 상품 생산에 특화하여 교역하면 양국 모두 이득을 볼 수 있다는 원리는 무엇일까요?", options: ["절대우위론", "보호무역론", "비교우위론"], answer: 2, explanation: "비교우위론은 절대우위가 없더라도, 각국이 상대적으로 기회비용이 낮은 상품 생산에 특화하고 교역하면 상호 이익이 발생한다는 원리입니다." },
+                    { q: "국가 A는 X재 10개 또는 Y재 5개를, 국가 B는 X재 8개 또는 Y재 8개를 생산할 수 있습니다. Y재 생산에 비교우위가 있는 나라는?", options: ["국가 A", "국가 B", "알 수 없음"], answer: 1, explanation: "국가 A의 Y재 1개 기회비용은 X재 2개이고, 국가 B의 Y재 1개 기회비용은 X재 1개입니다. 기회비용이 더 낮은 국가 B가 Y재 생산에 비교우위가 있습니다." }
+                ];
+                const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
+                let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
+                currentQuestion.options.forEach((opt, index) => {
+                    html += `<button class="quiz-option block w-full text-left p-2 border rounded hover:bg-gray-100" data-index="${index}">${opt}</button>`;
+                });
+                html += `</div><div id="quiz-result" class="mt-4 p-2 rounded"></div>`;
+                showModal('무역 퀴즈', html, [{ text: '닫기', classes: 'bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition' }]);
+                document.getElementById('quiz-options').addEventListener('click', (e) => {
+                    if (e.target.classList.contains('quiz-option')) {
+                        const selectedIndex = parseInt(e.target.dataset.index);
+                        const resultEl = document.getElementById('quiz-result');
+                        if (selectedIndex === currentQuestion.answer) {
+                            resultEl.innerHTML = `<p class="text-green-600 font-bold">정답!</p><p class="text-sm">${currentQuestion.explanation}</p>`;
+                            resultEl.className = 'mt-4 p-2 rounded bg-green-50 border border-green-200';
+                        } else {
+                            resultEl.innerHTML = `<p class="text-red-600 font-bold">오답.</p><p class="text-sm">${currentQuestion.explanation}</p>`;
+                            resultEl.className = 'mt-4 p-2 rounded bg-red-50 border border-red-200';
+                        }
+                        document.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
+                    }
+                });
+            }
+
             function setupEventListeners() {
                 [countryAX, countryAY, countryBX, countryBY].forEach(input => input.addEventListener('input', calculateOppCost));
                 simulateBtn.addEventListener('click', simulate);
+                quizBtn.addEventListener('click', showQuiz);
             }
             function init() { calculateOppCost(); }
             return { init, setupEventListeners };
