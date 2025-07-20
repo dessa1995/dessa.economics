@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인터랙티브 경제 학습 시뮬레이터</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            overscroll-behavior: none;
+        }
+        .tab-btn {
+            transition: all 0.3s ease;
+        }
+        .tab-btn.active {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+        .content-panel {
+            display: none;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .content-panel.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        canvas {
+            cursor: crosshair;
+            touch-action: none;
+        }
+        .control-panel {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid #e5e7eb;
+        }
+        .tooltip {
+            position: absolute;
+            display: none;
+            background-color: #1f2937;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            max-width: 500px;
+            width: 90%;
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        .modal-overlay.visible .modal-content {
+            transform: scale(1);
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 max-w-7xl">
+        <header class="text-center mb-6">
+            <h1 class="text-4xl font-bold text-blue-600">인터랙티브 경제 학습</h1>
+            <p class="text-lg text-gray-600 mt-2">그래프를 직접 조작하며 경제 원리를 체험해보세요.</p>
+        </header>
+
+        <!-- 탭 네비게이션 -->
+        <div id="tabs" class="flex flex-wrap justify-center border-b-2 border-gray-200 mb-4 space-x-1 sm:space-x-2">
+            <button data-tab="demand-supply" class="tab-btn active py-2 px-3 sm:px-4 border-b-4 border-transparent hover:bg-blue-100 rounded-t-lg text-sm sm:text-base">수요와 공급</button>
+            <button data-tab="elasticity" class="tab-btn py-2 px-3 sm:px-4 border-b-4 border-transparent hover:bg-blue-100 rounded-t-lg text-sm sm:text-base">가격과 탄력성</button>
+            <button data-tab="gov-intervention" class="tab-btn py-2 px-3 sm:px-4 border-b-4 border-transparent hover:bg-blue-100 rounded-t-lg text-sm sm:text-base">정부 개입</button>
+            <button data-tab="ppc" class="tab-btn py-2 px-3 sm:px-4 border-b-4 border-transparent hover:bg-blue-100 rounded-t-lg text-sm sm:text-base">생산가능곡선</button>
+            <button data-tab="trade" class="tab-btn py-2 px-3 sm:px-4 border-b-4 border-transparent hover:bg-blue-100 rounded-t-lg text-sm sm:text-base">무역</button>
+            <button data-tab="storage" class="tab-btn py-2 px-3 sm:px-4 border-b-4 border-transparent hover:bg-blue-100 rounded-t-lg text-sm sm:text-base">시나리오</button>
+        </div>
+
+        <!-- 콘텐츠 패널 -->
+        <main id="content" class="bg-white p-4 sm:p-6 rounded-lg shadow-lg">
+            <!-- 수요와 공급 패널 -->
+            <div id="demand-supply-content" class="content-panel active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 relative">
+                        <canvas id="demandSupplyCanvas"></canvas>
+                        <div id="ds-tooltip" class="tooltip"></div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">시장 상황판</h3>
+                            <div class="space-y-2 text-sm">
+                                <p>균형 가격 (P*): <span id="eq-price" class="font-bold text-green-600"></span></p>
+                                <p>균형 거래량 (Q*): <span id="eq-quantity" class="font-bold text-green-600"></span></p>
+                                <p>현재 가격: <span id="current-price-display" class="font-bold text-blue-600"></span></p>
+                                <p>수요량: <span id="current-demand-q" class="font-bold"></span></p>
+                                <p>공급량: <span id="current-supply-q" class="font-bold"></span></p>
+                                <p>시장 상태: <span id="market-status" class="font-bold"></span></p>
+                            </div>
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <div class="flex justify-between items-center">
+                                <h3 class="font-bold text-lg">가격 조절</h3>
+                                <button id="set-eq-price-btn" class="text-sm bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-md transition">균형</button>
+                            </div>
+                            <input type="range" id="price-slider" min="0" max="100" value="50" class="w-full mt-2 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">외부 요인 (곡선 이동)</h3>
+                            <div class="grid grid-cols-2 gap-2 text-sm">
+                                <button data-shift="demand-increase" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-md transition">수요 증가</button>
+                                <button data-shift="demand-decrease" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-md transition">수요 감소</button>
+                                <button data-shift="supply-increase" class="bg-orange-500 hover:bg-orange-600 text-white py-2 px-3 rounded-md transition">공급 증가</button>
+                                <button data-shift="supply-decrease" class="bg-orange-500 hover:bg-orange-600 text-white py-2 px-3 rounded-md transition">공급 감소</button>
+                            </div>
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">외부효과 시뮬레이션</h3>
+                            <select id="externality-select" class="w-full mt-1 block rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                <option value="none">없음</option>
+                                <option value="neg_prod">생산의 외부불경제</option>
+                                <option value="pos_prod">생산의 외부경제</option>
+                                <option value="neg_cons">소비의 외부불경제</option>
+                                <option value="pos_cons">소비의 외부경제</option>
+                            </select>
+                        </div>
+                        <div class="flex space-x-2 mt-4">
+                            <button id="ds-quiz-btn" class="flex-1 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-2 px-4 rounded-md transition">퀴즈 풀기</button>
+                            <button id="ds-reset-btn" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">초기화</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 가격과 탄력성 패널 -->
+            <div id="elasticity-content" class="content-panel">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 relative">
+                        <canvas id="elasticityCanvas"></canvas>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">현재 시장 상황</h3>
+                            <div class="space-y-2 text-sm">
+                                <p>현재 가격: <span id="el-current-price" class="font-bold text-gray-800"></span></p>
+                                <p>수요량: <span id="el-current-demand-q" class="font-bold text-blue-600"></span></p>
+                                <p>공급량: <span id="el-current-supply-q" class="font-bold text-orange-600"></span></p>
+                            </div>
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">곡선 선택</h3>
+                            <div class="flex items-center space-x-4">
+                                <label class="flex items-center space-x-2 cursor-pointer">
+                                    <input type="checkbox" id="el-show-demand" class="form-checkbox h-5 w-5 text-blue-600" checked>
+                                    <span>수요 곡선</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer">
+                                    <input type="checkbox" id="el-show-supply" class="form-checkbox h-5 w-5 text-orange-600" checked>
+                                    <span>공급 곡선</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">탄력성 조절</h3>
+                            <div id="el-demand-controls">
+                                <div class="flex justify-between items-center">
+                                    <label class="block text-sm font-medium">수요 탄력성</label>
+                                    <button data-type="demand" class="el-unit-btn text-xs bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded-md transition">단위탄력적 (1)</button>
+                                </div>
+                                <input type="range" id="el-demand-elasticity" min="0.2" max="5" value="1" step="0.1" class="w-full mt-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>비탄력적</span>
+                                    <span>탄력적</span>
+                                </div>
+                            </div>
+                            <div id="el-supply-controls" class="mt-3">
+                                <div class="flex justify-between items-center">
+                                    <label class="block text-sm font-medium">공급 탄력성</label>
+                                    <button data-type="supply" class="el-unit-btn text-xs bg-orange-500 hover:bg-orange-600 text-white py-1 px-2 rounded-md transition">단위탄력적 (1)</button>
+                                </div>
+                                <input type="range" id="el-supply-elasticity" min="0.2" max="5" value="1" step="0.1" class="w-full mt-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>비탄력적</span>
+                                    <span>탄력적</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                             <h3 class="font-bold text-lg mb-2">가격 조절</h3>
+                             <input type="range" id="el-price-slider" min="0" max="100" value="50" class="w-full mt-2 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">탄력성 분석</h3>
+                            <div id="demand-elasticity-info" class="space-y-1 text-sm">
+                                <p>수요의 가격탄력성: <span id="el-demand-value" class="font-bold text-blue-600"></span> (<span id="el-demand-type" class="font-bold"></span>)</p>
+                                <p class="text-xs text-gray-600">가격 10% 상승 시, 수요량 <span id="el-demand-sensitivity" class="font-bold"></span></p>
+                            </div>
+                             <div id="supply-elasticity-info" class="mt-3 space-y-1 text-sm">
+                                <p>공급의 가격탄력성: <span id="el-supply-value" class="font-bold text-orange-600"></span> (<span id="el-supply-type" class="font-bold"></span>)</p>
+                                <p class="text-xs text-gray-600">가격 10% 상승 시, 공급량 <span id="el-supply-sensitivity" class="font-bold"></span></p>
+                            </div>
+                        </div>
+                        <div class="flex space-x-2 mt-4">
+                            <button id="el-quiz-btn" class="flex-1 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-2 px-4 rounded-md transition">퀴즈 풀기</button>
+                            <button id="el-reset-btn" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">초기화</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 정부 개입 패널 -->
+            <div id="gov-intervention-content" class="content-panel">
+                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 relative">
+                        <canvas id="govCanvas"></canvas>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">시장 분석</h3>
+                            <div class="space-y-2 text-sm">
+                                <p>소비자 잉여: <span id="gov-cs" class="font-bold text-blue-600"></span></p>
+                                <p>생산자 잉여: <span id="gov-ps" class="font-bold text-orange-600"></span></p>
+                                <p>정부 잉여: <span id="gov-tax-revenue" class="font-bold text-green-600"></span></p>
+                                <p>총 잉여: <span id="gov-ts" class="font-bold text-purple-600"></span></p>
+                                <p>자중손실: <span id="gov-dwl" class="font-bold text-red-600"></span></p>
+                                <div id="tax-incidence-info" class="mt-2 pt-2 border-t border-gray-200">
+                                    <p>소비자 부담: <span id="gov-consumer-burden" class="font-bold"></span></p>
+                                    <p>생산자 부담: <span id="gov-producer-burden" class="font-bold"></span></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">탄력성 조절</h3>
+                            <div>
+                                <div class="flex justify-between items-center">
+                                    <label class="block text-sm font-medium">수요 탄력성</label>
+                                    <button data-type="demand" class="gov-unit-btn text-xs bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded-md transition">단위탄력적 (1)</button>
+                                </div>
+                                <input type="range" id="gov-demand-elasticity" min="0.2" max="5" value="1" step="0.1" class="w-full mt-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>비탄력적</span>
+                                    <span>탄력적</span>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <div class="flex justify-between items-center">
+                                    <label class="block text-sm font-medium">공급 탄력성</label>
+                                    <button data-type="supply" class="gov-unit-btn text-xs bg-orange-500 hover:bg-orange-600 text-white py-1 px-2 rounded-md transition">단위탄력적 (1)</button>
+                                </div>
+                                <input type="range" id="gov-supply-elasticity" min="0.2" max="5" value="1" step="0.1" class="w-full mt-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>비탄력적</span>
+                                    <span>탄력적</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">가격 통제</h3>
+                            <div>
+                                <label for="price-ceiling-slider" class="block text-sm font-medium">가격상한제 (최고가격: <span id="price-ceiling-value">OFF</span>)</label>
+                                <input type="range" id="price-ceiling-slider" min="0" max="100" value="0" class="w-full mt-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <div class="mt-3">
+                                <label for="price-floor-slider" class="block text-sm font-medium">가격하한제 (최저가격: <span id="price-floor-value">OFF</span>)</label>
+                                <input type="range" id="price-floor-slider" min="0" max="100" value="0" class="w-full mt-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">조세 부과</h3>
+                             <div class="flex items-center space-x-4 mb-3">
+                                <label class="flex items-center space-x-2 cursor-pointer text-sm">
+                                    <input type="radio" name="tax-target" value="producer" class="form-radio" checked>
+                                    <span>생산자 부과</span>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer text-sm">
+                                    <input type="radio" name="tax-target" value="consumer" class="form-radio">
+                                    <span>소비자 부과</span>
+                                </label>
+                            </div>
+                            <div>
+                                <label for="tax-slider" class="block text-sm font-medium">단위당 세금: <span id="tax-value">0</span></label>
+                                <input type="range" id="tax-slider" min="0" max="50" value="0" class="w-full mt-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                        </div>
+                         <div class="flex space-x-2 mt-4">
+                            <button id="gov-quiz-btn" class="flex-1 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-2 px-4 rounded-md transition">퀴즈 풀기</button>
+                            <button id="gov-reset-btn" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">초기화</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 생산가능곡선 패널 -->
+            <div id="ppc-content" class="content-panel">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 relative">
+                        <canvas id="ppcCanvas"></canvas>
+                        <div id="ppc-tooltip" class="tooltip"></div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">생산점 정보</h3>
+                            <p>X재 생산량: <span id="ppc-x-prod" class="font-bold text-blue-600">0</span></p>
+                            <p>Y재 생산량: <span id="ppc-y-prod" class="font-bold text-orange-600">0</span></p>
+                            <p>생산 효율성: <span id="ppc-efficiency" class="font-bold"></span></p>
+                        </div>
+                        <div class="control-panel p-4 rounded-lg shadow-sm">
+                            <h3 class="font-bold text-lg mb-2">시뮬레이션</h3>
+                            <button id="tech-advance-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition">기술 발전 (PPC 확장)</button>
+                        </div>
+                        <div class="flex space-x-2 mt-4">
+                            <button id="ppc-quiz-btn" class="flex-1 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-bold py-2 px-4 rounded-md transition">퀴즈 풀기</button>
+                            <button id="ppc-reset-btn" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">초기화</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 무역과 비교우위 패널 -->
+            <div id="trade-content" class="content-panel">
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- 국가 A -->
+                    <div class="control-panel p-4 rounded-lg shadow-sm">
+                        <h3 class="text-xl font-bold mb-3 text-center text-blue-700">국가 A</h3>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700">X재 최대 생산량</label>
+                            <input type="number" id="countryA-x" value="60" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700">Y재 최대 생산량</label>
+                            <input type="number" id="countryA-y" value="30" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        </div>
+                        <div class="text-sm bg-blue-50 p-3 rounded-md">
+                            <p>Y재 1단위 기회비용: <strong id="opp-cost-A" class="text-blue-800"></strong> X재</p>
+                        </div>
+                    </div>
+                    <!-- 국가 B -->
+                    <div class="control-panel p-4 rounded-lg shadow-sm">
+                        <h3 class="text-xl font-bold mb-3 text-center text-orange-700">국가 B</h3>
+                         <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700">X재 최대 생산량</label>
+                            <input type="number" id="countryB-x" value="20" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700">Y재 최대 생산량</label>
+                            <input type="number" id="countryB-y" value="40" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        </div>
+                         <div class="text-sm bg-orange-50 p-3 rounded-md">
+                            <p>Y재 1단위 기회비용: <strong id="opp-cost-B" class="text-orange-800"></strong> X재</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-6 text-center">
+                    <button id="trade-simulate-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg transition text-lg shadow-md">분석 및 무역 시뮬레이션</button>
+                </div>
+                <div id="trade-result" class="mt-6 p-4 bg-gray-50 rounded-lg shadow-inner hidden">
+                    <h3 class="text-lg font-bold mb-2">분석 결과</h3>
+                    <p id="absolute-advantage-result"></p>
+                    <p id="comparative-advantage-result"></p>
+                    <h3 class="text-lg font-bold mt-4 mb-2">무역 후 이익</h3>
+                    <p id="trade-gains-result"></p>
+                </div>
+            </div>
+
+            <!-- 시나리오 관리 패널 -->
+            <div id="storage-content" class="content-panel">
+                <div class="max-w-md mx-auto">
+                    <h2 class="text-2xl font-bold mb-4">시나리오 저장 및 불러오기</h2>
+                    <div class="mb-6">
+                        <label for="scenario-name" class="block text-sm font-medium text-gray-700">시나리오 이름</label>
+                        <input type="text" id="scenario-name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="예: 소득 증가 후 시장">
+                        <button id="save-scenario-btn" class="mt-2 w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition">현재 시나리오 저장</button>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">저장된 시나리오 목록</h3>
+                        <ul id="scenario-list" class="space-y-2">
+                            <!-- 시나리오 목록이 여기에 동적으로 추가됩니다. -->
+                        </ul>
+                         <p id="no-scenarios" class="text-gray-500">저장된 시나리오가 없습니다.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 퀴즈/결과 모달 -->
+    <div id="modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 id="modal-title" class="text-2xl font-bold mb-4">퀴즈</h2>
+            <div id="modal-body"></div>
+            <div class="mt-6 text-right">
+                <button id="modal-close-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // 전역 스크립트 시작
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- 전역 변수 및 상태 관리 ---
+        const tabs = document.getElementById('tabs');
+        const contentPanels = document.getElementById('content').children;
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+
+        let activeTab = 'demand-supply';
+
+        // --- 탭 전환 로직 ---
+        tabs.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                const tabName = e.target.dataset.tab;
+                if (tabName !== activeTab) {
+                    tabs.querySelector('.active').classList.remove('active');
+                    e.target.classList.add('active');
+                    document.querySelector('.content-panel.active').classList.remove('active');
+                    document.getElementById(`${tabName}-content`).classList.add('active');
+                    activeTab = tabName;
+                    
+                    switch(activeTab) {
+                        case 'demand-supply': dsModule.init(); break;
+                        case 'elasticity': elasticityModule.init(); break;
+                        case 'gov-intervention': govModule.init(); break;
+                        case 'ppc': ppcModule.init(); break;
+                        case 'trade': tradeModule.init(); break;
+                        case 'storage': storageModule.init(); break;
+                    }
+                }
+            }
+        });
+        
+        // --- 모달 로직 ---
+        const showModal = (title, content, quizLogic) => {
+            modalTitle.textContent = title;
+            modalBody.innerHTML = content;
+            modal.classList.add('visible');
+            if (quizLogic) {
+                quizLogic();
+            }
+        };
+
+        const hideModal = () => {
+            modal.classList.remove('visible');
+        };
+        modalCloseBtn.addEventListener('click', hideModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) hideModal();
+        });
+
+        // --- 툴팁 로직 ---
+        const createTooltip = (canvas, tooltipElement) => {
+            return {
+                show(x, y, text) {
+                    tooltipElement.style.display = 'block';
+                    tooltipElement.style.left = `${x + 15}px`;
+                    tooltipElement.style.top = `${y + 15}px`;
+                    tooltipElement.textContent = text;
+                    requestAnimationFrame(() => { tooltipElement.style.opacity = '1'; });
+                },
+                hide() {
+                    tooltipElement.style.opacity = '0';
+                    setTimeout(() => { tooltipElement.style.display = 'none'; }, 200);
+                }
+            };
+        };
+        
+        // --- 애니메이션 유틸리티 ---
+        const animateValue = (start, end, duration, onUpdate, onComplete) => {
+            let startTime = null;
+            const step = (timestamp) => {
+                if (!startTime) startTime = timestamp;
+                const progress = Math.min((timestamp - startTime) / duration, 1);
+                const currentValue = start + (end - start) * progress;
+                onUpdate(currentValue);
+                if (progress < 1) {
+                    requestAnimationFrame(step);
+                } else if (onComplete) {
+                    onComplete();
+                }
+            };
+            requestAnimationFrame(step);
+        };
+
+        // --- 수요와 공급 모듈 (dsModule) ---
+        const dsModule = (() => {
+            const canvas = document.getElementById('demandSupplyCanvas');
+            const ctx = canvas.getContext('2d');
+            const tooltip = createTooltip(canvas, document.getElementById('ds-tooltip'));
+            
+            const priceSlider = document.getElementById('price-slider');
+            const eqPriceEl = document.getElementById('eq-price');
+            const eqQuantityEl = document.getElementById('eq-quantity');
+            const currentPriceDisplay = document.getElementById('current-price-display');
+            const currentDemandQ = document.getElementById('current-demand-q');
+            const currentSupplyQ = document.getElementById('current-supply-q');
+            const marketStatus = document.getElementById('market-status');
+            const externalitySelect = document.getElementById('externality-select');
+            const setEqPriceBtn = document.getElementById('set-eq-price-btn');
+
+            let state = {};
+            const defaultState = {
+                demand: { intercept: 100, slope: -1 },
+                supply: { intercept: 0, slope: 1 },
+                price: 50,
+                externalityType: 'none',
+                extAmount: 20,
+            };
+
+            let width, height, margin;
+            let dragging = null;
+            let lastMousePos = { x: 0, y: 0 };
+
+            function resetState() {
+                state = JSON.parse(JSON.stringify(defaultState));
+                priceSlider.value = state.price;
+                externalitySelect.value = 'none';
+                update();
+            }
+
+            const toCanvasX = q => margin.left + (q / 110) * (width - margin.left - margin.right);
+            const toCanvasY = p => height - margin.bottom - (p / 110) * (height - margin.top - margin.bottom);
+            const fromCanvasX = x => ((x - margin.left) / (width - margin.left - margin.right)) * 110;
+            const fromCanvasY = y => ((height - margin.bottom - y) / (height - margin.top - margin.bottom)) * 110;
+
+            function calculateEquilibrium(d, s) {
+                const price = (d.intercept - s.intercept) / (s.slope - d.slope);
+                const quantity = d.intercept + d.slope * price;
+                return { price, quantity };
+            }
+            
+            function drawGrid() {
+                ctx.beginPath();
+                ctx.strokeStyle = '#e5e7eb';
+                ctx.fillStyle = '#6b7280';
+                ctx.font = '12px Noto Sans KR';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                for (let i = 20; i <= 100; i += 20) {
+                    const y = toCanvasY(i);
+                    ctx.moveTo(margin.left, y);
+                    ctx.lineTo(width - margin.right, y);
+                    ctx.fillText(Math.round(i), margin.left - 25, y);
+                    const x = toCanvasX(i);
+                    ctx.moveTo(x, height - margin.bottom);
+                    ctx.lineTo(x, margin.top);
+                    ctx.fillText(Math.round(i), x, height - margin.bottom + 15);
+                }
+                ctx.stroke();
+                ctx.textAlign = 'start';
+                ctx.textBaseline = 'alphabetic';
+            }
+
+            function draw() {
+                ctx.clearRect(0, 0, width, height);
+                drawGrid();
+
+                ctx.beginPath();
+                ctx.moveTo(margin.left, margin.top);
+                ctx.lineTo(margin.left, height - margin.bottom);
+                ctx.lineTo(width - margin.right, height - margin.bottom);
+                ctx.strokeStyle = '#374151';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = '#374151';
+                ctx.font = '14px Noto Sans KR';
+                ctx.fillText('가격(P)', margin.left - 50, margin.top - 5);
+                ctx.fillText('수량(Q)', width - margin.right + 5, height - margin.bottom + 5);
+
+                const drawCurve = (curve, color, label) => {
+                    ctx.beginPath();
+                    let firstPoint = true;
+                    let lastX, lastY;
+                    for (let p = 0; p <= 110; p += 1) {
+                        const q = curve.intercept + curve.slope * p;
+                        if (q >= 0 && q <= 110) {
+                            const x = toCanvasX(q);
+                            const y = toCanvasY(p);
+                            if (firstPoint) {
+                                ctx.moveTo(x, y);
+                                firstPoint = false;
+                            } else {
+                                ctx.lineTo(x, y);
+                            }
+                            lastX = x; lastY = y;
+                        }
+                    }
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 14px Noto Sans KR';
+                    
+                    const isRightEdge = lastX > width - margin.right - 60;
+                    ctx.textAlign = isRightEdge ? 'right' : 'left';
+                    const labelX = isRightEdge ? lastX - 8 : lastX + 8;
+                    ctx.fillText(label, labelX, lastY);
+                    ctx.textAlign = 'start';
+                };
+                
+                const drawnLabels = [];
+                const addLabel = (text, x, y, color) => {
+                    const roundedText = Math.round(text).toString();
+                    const textMetrics = ctx.measureText(roundedText);
+                    const labelBox = {
+                        x: x - 15,
+                        y: y + 10,
+                        width: textMetrics.width + 10,
+                        height: 20
+                    };
+
+                    let collision = false;
+                    for (const drawn of drawnLabels) {
+                        if (
+                            labelBox.x < drawn.x + drawn.width &&
+                            labelBox.x + labelBox.width > drawn.x &&
+                            labelBox.y < drawn.y + drawn.height &&
+                            labelBox.y + labelBox.height > drawn.y
+                        ) {
+                            collision = true;
+                            break;
+                        }
+                    }
+
+                    if (!collision) {
+                        ctx.fillStyle = color;
+                        ctx.fillText(roundedText, x - 10, y + 20);
+                        drawnLabels.push(labelBox);
+                    }
+                };
+
+
+                const privateDemand = state.demand;
+                const privateSupply = state.supply;
+                const isExternalityActive = state.externalityType !== 'none';
+
+                drawCurve(privateDemand, '#3b82f6', isExternalityActive ? '사적 수요' : '수요');
+                drawCurve(privateSupply, '#f97316', isExternalityActive ? '사적 공급' : '공급');
+
+                let socialDemand = privateDemand;
+                let socialSupply = privateSupply;
+                
+                switch (state.externalityType) {
+                    case 'neg_prod':
+                        socialSupply = { intercept: privateSupply.intercept + state.extAmount, slope: privateSupply.slope };
+                        drawCurve(socialSupply, '#ef4444', '사회적 비용');
+                        break;
+                    case 'pos_prod':
+                        socialSupply = { intercept: privateSupply.intercept - state.extAmount, slope: privateSupply.slope };
+                        drawCurve(socialSupply, '#f59e0b', '사회적 비용');
+                        break;
+                    case 'neg_cons':
+                        socialDemand = { intercept: privateDemand.intercept - state.extAmount, slope: privateDemand.slope };
+                        drawCurve(socialDemand, '#ef4444', '사회적 편익');
+                        break;
+                    case 'pos_cons':
+                        socialDemand = { intercept: privateDemand.intercept + state.extAmount, slope: privateDemand.slope };
+                        drawCurve(socialDemand, '#22c55e', '사회적 편익');
+                        break;
+                }
+
+                const marketEq = calculateEquilibrium(privateDemand, privateSupply);
+                drawEquilibrium(marketEq.price, marketEq.quantity, '#059669', '균형가격', '균형량');
+
+                if (isExternalityActive) {
+                    const socialEq = calculateEquilibrium(socialDemand, socialSupply);
+                    drawEquilibrium(socialEq.price, socialEq.quantity, '#be123c', '최적가격', '최적량');
+                }
+
+                const currentP = state.price;
+                const currentQd = Math.max(0, privateDemand.intercept + privateDemand.slope * currentP);
+                const currentQs = Math.max(0, privateSupply.intercept + privateSupply.slope * currentP);
+                
+                ctx.beginPath();
+                ctx.moveTo(margin.left, toCanvasY(currentP));
+                ctx.lineTo(width - margin.right, toCanvasY(currentP));
+                ctx.strokeStyle = '#6b7280';
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                ctx.fillStyle = '#6b7280';
+                ctx.font = '12px Noto Sans KR';
+                ctx.fillText(`${Math.round(currentP)}`, margin.left + 5, toCanvasY(currentP) - 8);
+
+                if (Math.abs(currentQd - currentQs) > 1) {
+                    const x1 = toCanvasX(Math.min(currentQd, currentQs));
+                    const x2 = toCanvasX(Math.max(currentQd, currentQs));
+                    const y = toCanvasY(currentP);
+                    const isExcessDemand = currentQd > currentQs;
+                    ctx.fillStyle = isExcessDemand ? 'rgba(59, 130, 246, 0.2)' : 'rgba(249, 115, 22, 0.2)';
+                    ctx.fillRect(x1, y - 10, x2 - x1, 20);
+                    ctx.fillStyle = isExcessDemand ? '#3b82f6' : '#f97316';
+                    ctx.font = 'bold 12px Noto Sans KR';
+                    const label = isExcessDemand ? '초과수요' : '초과공급';
+                    const amount = Math.abs(currentQd - currentQs);
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`${label}: ${Math.round(amount)}`, x1 + (x2 - x1) / 2, y + 5);
+                    ctx.textAlign = 'start';
+                }
+                
+                drawPoint(toCanvasX(currentQd), toCanvasY(currentP), '#3b82f6');
+                addLabel(currentQd, toCanvasX(currentQd), toCanvasY(currentP), '#3b82f6');
+                
+                drawPoint(toCanvasX(currentQs), toCanvasY(currentP), '#f97316');
+                addLabel(currentQs, toCanvasX(currentQs), toCanvasY(currentP), '#f97316');
+            }
+
+            function drawPoint(x, y, color) {
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            function drawEquilibrium(p, q, color, pLabel, qLabel) {
+                if (p < 0 || q < 0 || p > 110 || q > 110) return;
+                const x = toCanvasX(q);
+                const y = toCanvasY(p);
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.moveTo(x, y);
+                ctx.lineTo(x, height - margin.bottom);
+                ctx.moveTo(x, y);
+                ctx.lineTo(margin.left, y);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.setLineDash([]);
+                drawPoint(x, y, color);
+                ctx.fillStyle = color;
+                ctx.font = 'bold 12px Noto Sans KR';
+                ctx.textAlign = 'right';
+                ctx.fillText(pLabel, margin.left - 8, y + 5);
+                ctx.textAlign = 'center';
+                ctx.fillText(qLabel, x, height - margin.bottom + 20);
+                ctx.textAlign = 'start';
+            }
+
+            function updateUI() {
+                const eq = calculateEquilibrium(state.demand, state.supply);
+                eqPriceEl.textContent = Math.round(eq.price);
+                eqQuantityEl.textContent = Math.round(eq.quantity);
+                
+                currentPriceDisplay.textContent = Math.round(state.price);
+                const currentQd = Math.max(0, state.demand.intercept + state.demand.slope * state.price);
+                const currentQs = Math.max(0, state.supply.intercept + state.supply.slope * state.price);
+                currentDemandQ.textContent = Math.round(currentQd);
+                currentSupplyQ.textContent = Math.round(currentQs);
+
+                if (Math.abs(currentQd - currentQs) < 1) {
+                    marketStatus.textContent = '균형';
+                    marketStatus.className = 'font-bold text-green-600';
+                } else if (currentQd > currentQs) {
+                    marketStatus.textContent = '초과 수요';
+                    marketStatus.className = 'font-bold text-blue-600';
+                } else {
+                    marketStatus.textContent = '초과 공급';
+                    marketStatus.className = 'font-bold text-orange-600';
+                }
+            }
+
+            function update() { draw(); updateUI(); }
+            
+            function handleShift(type) {
+                const oldState = JSON.parse(JSON.stringify(state));
+                let targetState = JSON.parse(JSON.stringify(state));
+                const shiftAmount = 10;
+                switch(type) {
+                    case 'demand-increase': targetState.demand.intercept += shiftAmount; break;
+                    case 'demand-decrease': targetState.demand.intercept -= shiftAmount; break;
+                    case 'supply-increase': targetState.supply.intercept += shiftAmount; break;
+                    case 'supply-decrease': targetState.supply.intercept -= shiftAmount; break;
+                }
+                animateValue(0, 1, 400, (progress) => {
+                    state.demand.intercept = oldState.demand.intercept + (targetState.demand.intercept - oldState.demand.intercept) * progress;
+                    state.supply.intercept = oldState.supply.intercept + (targetState.supply.intercept - oldState.supply.intercept) * progress;
+                    update();
+                });
+            }
+
+            function setupEventListeners() {
+                window.addEventListener('resize', init);
+                priceSlider.addEventListener('input', (e) => {
+                    state.price = parseFloat(e.target.value);
+                    update();
+                });
+                setEqPriceBtn.addEventListener('click', () => {
+                    const eq = calculateEquilibrium(state.demand, state.supply);
+                    animateValue(state.price, eq.price, 300, (p) => {
+                        state.price = p;
+                        priceSlider.value = p;
+                        update();
+                    });
+                });
+                document.querySelector('#demand-supply-content').addEventListener('click', (e) => {
+                    if (e.target.dataset.shift) handleShift(e.target.dataset.shift);
+                });
+                externalitySelect.addEventListener('change', (e) => {
+                    state.externalityType = e.target.value;
+                    if (state.externalityType !== 'none') {
+                        const eq = calculateEquilibrium(state.demand, state.supply);
+                        animateValue(state.price, eq.price, 300, (p) => {
+                            state.price = p;
+                            priceSlider.value = p;
+                            update();
+                        });
+                    } else {
+                        update();
+                    }
+                });
+                document.getElementById('ds-reset-btn').addEventListener('click', resetState);
+                document.getElementById('ds-quiz-btn').addEventListener('click', showQuiz);
+                
+                canvas.addEventListener('pointerdown', (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+                    const mouseP = fromCanvasY(mouseY);
+                    const mouseQ = fromCanvasX(mouseX);
+                    const demandQ = state.demand.intercept + state.demand.slope * mouseP;
+                    const supplyQ = state.supply.intercept + state.supply.slope * mouseP;
+                    if (Math.abs(mouseQ - demandQ) < 5) dragging = 'demand';
+                    else if (Math.abs(mouseQ - supplyQ) < 5) dragging = 'supply';
+                    lastMousePos = { x: mouseX, y: mouseY };
+                });
+                canvas.addEventListener('pointermove', (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+                    if (dragging) {
+                        const deltaX = mouseX - lastMousePos.x;
+                        const deltaQ = (deltaX / (width - margin.left - margin.right)) * 110;
+                        if (dragging === 'demand') state.demand.intercept += deltaQ;
+                        else if (dragging === 'supply') state.supply.intercept += deltaQ;
+                        update();
+                    }
+                    lastMousePos = { x: mouseX, y: mouseY };
+                    const p = fromCanvasY(mouseY);
+                    const q = fromCanvasX(mouseX);
+                    if (p < 0 || p > 110 || q < 0 || q > 110) { tooltip.hide(); return; }
+                    const eq = calculateEquilibrium(state.demand, state.supply);
+                    if (Math.hypot(toCanvasX(eq.quantity) - mouseX, toCanvasY(eq.price) - mouseY) < 10) {
+                        tooltip.show(mouseX, mouseY, `시장 균형점 (P: ${Math.round(eq.price)}, Q: ${Math.round(eq.quantity)})`);
+                    } else { tooltip.hide(); }
+                });
+                canvas.addEventListener('pointerup', () => { dragging = null; });
+                canvas.addEventListener('pointerleave', () => { dragging = null; tooltip.hide(); });
+            }
+            
+            function showQuiz() {
+                const questions = [
+                    { q: "소득이 증가하면 일반적으로 수요 곡선은 어떻게 될까요?", options: ["오른쪽으로 이동", "왼쪽으로 이동", "곡선상에서 이동", "변화 없음"], answer: 0, explanation: "소득 증가는 대표적인 수요 증가 요인입니다. 동일한 가격에서 더 많은 양을 소비하려 하므로 수요 곡선이 오른쪽으로 이동합니다." },
+                    { q: "생산 기술의 발전은 공급 곡선에 어떤 영향을 미칠까요?", options: ["왼쪽으로 이동", "오른쪽으로 이동", "곡선상에서 이동", "변화 없음"], answer: 1, explanation: "기술 발전은 생산 비용을 절감시켜 동일한 가격에서 더 많은 양을 공급할 수 있게 합니다. 따라서 공급 곡선이 오른쪽으로 이동합니다." },
+                    { q: "상품의 가격이 균형 가격보다 높을 때 시장에는 어떤 현상이 발생할까요?", options: ["초과 수요", "초과 공급", "균형", "알 수 없음"], answer: 1, explanation: "가격이 균형보다 높으면 공급량은 수요량을 초과하게 되어 '초과 공급'이 발생합니다. 이는 재고가 쌓이는 현상으로 나타납니다." }
+                ];
+                const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
+                let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
+                currentQuestion.options.forEach((opt, index) => {
+                    html += `<button class="quiz-option block w-full text-left p-2 border rounded hover:bg-gray-100" data-index="${index}">${opt}</button>`;
+                });
+                html += `</div><div id="quiz-result" class="mt-4 p-2 rounded"></div>`;
+                showModal('수요와 공급 퀴즈', html, () => {
+                    document.getElementById('quiz-options').addEventListener('click', (e) => {
+                        if (e.target.classList.contains('quiz-option')) {
+                            const selectedIndex = parseInt(e.target.dataset.index);
+                            const resultEl = document.getElementById('quiz-result');
+                            if (selectedIndex === currentQuestion.answer) {
+                                resultEl.innerHTML = `<p class="text-green-600 font-bold">정답입니다!</p><p class="text-sm">${currentQuestion.explanation}</p>`;
+                                resultEl.className = 'mt-4 p-2 rounded bg-green-50 border border-green-200';
+                            } else {
+                                resultEl.innerHTML = `<p class="text-red-600 font-bold">오답입니다.</p><p class="text-sm">${currentQuestion.explanation}</p>`;
+                                 resultEl.className = 'mt-4 p-2 rounded bg-red-50 border border-red-200';
+                            }
+                            document.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
+                        }
+                    }, { once: true });
+                });
+            }
+            
+            function init() {
+                const container = canvas.parentElement;
+                const dpr = window.devicePixelRatio || 1;
+                const rect = container.getBoundingClientRect();
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.width * 0.65 * dpr;
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.width * 0.65}px`;
+                ctx.scale(dpr, dpr);
+                width = canvas.width / dpr;
+                height = canvas.height / dpr;
+                margin = { top: 30, right: 70, bottom: 40, left: 60 };
+                if (Object.keys(state).length === 0) resetState();
+                else update();
+            }
+            return { init, setupEventListeners, getState: () => state, loadState: (newState) => {
+                    state = newState;
+                    priceSlider.value = state.price;
+                    externalitySelect.value = state.externalityType || 'none';
+                    update();
+                }
+            };
+        })();
+
+        // --- 가격과 탄력성 모듈 ---
+        const elasticityModule = (() => {
+            const canvas = document.getElementById('elasticityCanvas');
+            const ctx = canvas.getContext('2d');
+            const showDemandCheck = document.getElementById('el-show-demand');
+            const showSupplyCheck = document.getElementById('el-show-supply');
+            const demandValueEl = document.getElementById('el-demand-value');
+            const demandTypeEl = document.getElementById('el-demand-type');
+            const demandSensitivityEl = document.getElementById('el-demand-sensitivity');
+            const supplyValueEl = document.getElementById('el-supply-value');
+            const supplyTypeEl = document.getElementById('el-supply-type');
+            const supplySensitivityEl = document.getElementById('el-supply-sensitivity');
+            const demandInfoEl = document.getElementById('demand-elasticity-info');
+            const supplyInfoEl = document.getElementById('supply-elasticity-info');
+            const demandControlsEl = document.getElementById('el-demand-controls');
+            const supplyControlsEl = document.getElementById('el-supply-controls');
+            const demandElasticitySlider = document.getElementById('el-demand-elasticity');
+            const supplyElasticitySlider = document.getElementById('el-supply-elasticity');
+            const priceSlider = document.getElementById('el-price-slider');
+            const currentPriceEl = document.getElementById('el-current-price');
+            const currentDemandQEl = document.getElementById('el-current-demand-q');
+            const currentSupplyQEl = document.getElementById('el-current-supply-q');
+            const unitBtns = document.querySelectorAll('.el-unit-btn');
+            const resetBtn = document.getElementById('el-reset-btn');
+            const quizBtn = document.getElementById('el-quiz-btn');
+
+            let state = {};
+            const defaultState = {
+                demand: { intercept: 100, slope: -1 },
+                supply: { intercept: 0, slope: 1 },
+                showDemand: true,
+                showSupply: true,
+                price: 50,
+            };
+            let width, height, margin;
+
+            const toCanvasX = q => margin.left + (q / 110) * (width - margin.left - margin.right);
+            const toCanvasY = p => height - margin.bottom - (p / 110) * (height - margin.top - margin.bottom);
+            
+            function calculateEquilibrium(d, s) {
+                if (s.slope === d.slope) return { price: 50, quantity: 50 };
+                const price = (d.intercept - s.intercept) / (s.slope - d.slope);
+                const quantity = d.intercept + d.slope * price;
+                return { price, quantity };
+            }
+
+            function resetState() {
+                state = JSON.parse(JSON.stringify(defaultState));
+                showDemandCheck.checked = true;
+                showSupplyCheck.checked = true;
+                demandElasticitySlider.value = 1;
+                supplyElasticitySlider.value = 1;
+                priceSlider.value = 50;
+                update();
+            }
+
+            function update() {
+                const eq = calculateEquilibrium({ intercept: 100, slope: -1 }, { intercept: 0, slope: 1 });
+                
+                state.demand.slope = -1 * parseFloat(demandElasticitySlider.value) * (eq.quantity / eq.price);
+                state.supply.slope = parseFloat(supplyElasticitySlider.value) * (eq.quantity / eq.price);
+                
+                state.demand.intercept = eq.quantity - state.demand.slope * eq.price;
+                state.supply.intercept = eq.quantity - state.supply.slope * eq.price;
+
+                draw();
+                updateUI();
+            }
+
+            function drawGrid() {
+                 ctx.beginPath();
+                ctx.strokeStyle = '#e5e7eb';
+                ctx.fillStyle = '#6b7280';
+                ctx.font = '12px Noto Sans KR';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                for (let i = 20; i <= 100; i += 20) {
+                    ctx.fillText(Math.round(i), margin.left - 25, toCanvasY(i));
+                    ctx.fillText(Math.round(i), toCanvasX(i), height - margin.bottom + 15);
+                }
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(margin.left, margin.top);
+                ctx.lineTo(margin.left, height - margin.bottom);
+                ctx.lineTo(width - margin.right, height - margin.bottom);
+                ctx.strokeStyle = '#374151';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                ctx.fillStyle = '#374151';
+                ctx.font = '14px Noto Sans KR';
+                ctx.textAlign = 'start';
+                ctx.textBaseline = 'alphabetic';
+                ctx.fillText('가격(P)', margin.left - 50, margin.top - 5);
+                ctx.fillText('수량(Q)', width - margin.right + 5, height - margin.bottom + 5);
+            }
+
+            function draw() {
+                ctx.clearRect(0, 0, width, height);
+                drawGrid();
+                
+                if (state.showDemand) drawCurve(state.demand, '#3b82f6', '수요');
+                if (state.showSupply) drawCurve(state.supply, '#f97316', '공급');
+                
+                const currentP = state.price;
+                const currentQd = state.demand.intercept + state.demand.slope * currentP;
+                const currentQs = state.supply.intercept + state.supply.slope * currentP;
+
+                ctx.beginPath();
+                ctx.moveTo(margin.left, toCanvasY(currentP));
+                ctx.lineTo(width - margin.right, toCanvasY(currentP));
+                ctx.strokeStyle = '#6b7280';
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.fillStyle = '#6b7280';
+                ctx.font = '12px Noto Sans KR';
+                ctx.fillText(`${Math.round(currentP)}`, margin.left + 5, toCanvasY(currentP) - 8);
+                
+                if (state.showDemand) {
+                    drawPoint(toCanvasX(currentQd), toCanvasY(currentP), '#3b82f6');
+                    ctx.fillStyle = '#3b82f6';
+                    ctx.fillText(Math.round(currentQd), toCanvasX(currentQd) - 10, toCanvasY(currentP) + 20);
+                }
+                if (state.showSupply) {
+                    drawPoint(toCanvasX(currentQs), toCanvasY(currentP), '#f97316');
+                    ctx.fillStyle = '#f97316';
+                    ctx.fillText(Math.round(currentQs), toCanvasX(currentQs) - 10, toCanvasY(currentP) + 20);
+                }
+            }
+
+            function drawCurve(curve, color, label) {
+                ctx.beginPath();
+                let lastX, lastY;
+                for (let p = 0; p <= 110; p += 1) {
+                    const q = curve.intercept + curve.slope * p;
+                    if(q >= 0 && q <= 110) {
+                        const x = toCanvasX(q);
+                        const y = toCanvasY(p);
+                        if(p === 0 || q <= 0.1) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+                        lastX = x; lastY = y;
+                    }
+                }
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.fillStyle = color;
+                ctx.font = 'bold 14px Noto Sans KR';
+                ctx.fillText(label, lastX + 5, lastY - 5);
+            }
+            
+            function drawPoint(x, y, color) {
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            function updateUI() {
+                const eq = calculateEquilibrium(state.demand, state.supply);
+                
+                demandInfoEl.style.display = state.showDemand ? 'block' : 'none';
+                demandControlsEl.style.display = state.showDemand ? 'block' : 'none';
+                supplyInfoEl.style.display = state.showSupply ? 'block' : 'none';
+                supplyControlsEl.style.display = state.showSupply ? 'block' : 'none';
+
+                if (state.showDemand) {
+                    const demandElasticity = parseFloat(demandElasticitySlider.value);
+                    demandValueEl.textContent = demandElasticity.toFixed(2);
+                    if (demandElasticity > 1) demandTypeEl.textContent = '탄력적';
+                    else if (demandElasticity < 1) demandTypeEl.textContent = '비탄력적';
+                    else demandTypeEl.textContent = '단위탄력적';
+                    demandSensitivityEl.textContent = `${(demandElasticity * 10).toFixed(1)}% 감소`;
+                }
+                if (state.showSupply) {
+                    const supplyElasticity = parseFloat(supplyElasticitySlider.value);
+                    supplyValueEl.textContent = supplyElasticity.toFixed(2);
+                    if (supplyElasticity > 1) supplyTypeEl.textContent = '탄력적';
+                    else if (supplyElasticity < 1) supplyTypeEl.textContent = '비탄력적';
+                    else supplyTypeEl.textContent = '단위탄력적';
+                    supplySensitivityEl.textContent = `${(supplyElasticity * 10).toFixed(1)}% 증가`;
+                }
+                
+                const currentP = state.price;
+                const currentQd = state.demand.intercept + state.demand.slope * currentP;
+                const currentQs = state.supply.intercept + state.supply.slope * currentP;
+                currentPriceEl.textContent = Math.round(currentP);
+                currentDemandQEl.textContent = Math.round(Math.max(0, currentQd));
+                currentSupplyQEl.textContent = Math.round(Math.max(0, currentQs));
+            }
+            
+            function setupEventListeners() {
+                window.addEventListener('resize', init);
+                resetBtn.addEventListener('click', resetState);
+                quizBtn.addEventListener('click', showQuiz);
+                showDemandCheck.addEventListener('change', (e) => { state.showDemand = e.target.checked; update(); });
+                showSupplyCheck.addEventListener('change', (e) => { state.showSupply = e.target.checked; update(); });
+                demandElasticitySlider.addEventListener('input', update);
+                supplyElasticitySlider.addEventListener('input', update);
+                priceSlider.addEventListener('input', (e) => {
+                    state.price = parseFloat(e.target.value);
+                    draw();
+                    updateUI();
+                });
+                unitBtns.forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const type = e.target.dataset.type;
+                        if (type === 'demand') demandElasticitySlider.value = 1;
+                        else supplyElasticitySlider.value = 1;
+                        update();
+                    });
+                });
+            }
+            
+            function showQuiz() {
+                 const questions = [
+                    { q: "수요의 가격탄력성이 1보다 큰 재화는 무엇이라고 할까요?", options: ["필수재", "사치재", "열등재", "정상재"], answer: 1, explanation: "수요의 가격탄력성이 1보다 큰 경우 '탄력적'이라고 하며, 이는 가격 변화에 수요량이 민감하게 반응하는 것을 의미합니다. 사치재가 대표적인 예입니다." },
+                    { q: "공급의 가격탄력성에 영향을 미치는 요인이 아닌 것은?", options: ["생산 기간", "재화의 성격", "소비자의 소득", "저장 가능성"], answer: 2, explanation: "소비자의 소득은 수요에 영향을 미치는 요인입니다. 생산 기간이 짧을수록, 저장이 용이할수록 공급은 더 탄력적이 됩니다." }
+                ];
+                const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
+                let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
+                currentQuestion.options.forEach((opt, index) => {
+                    html += `<button class="quiz-option block w-full text-left p-2 border rounded hover:bg-gray-100" data-index="${index}">${opt}</button>`;
+                });
+                html += `</div><div id="quiz-result" class="mt-4 p-2 rounded"></div>`;
+                showModal('탄력성 퀴즈', html, () => {
+                     document.getElementById('quiz-options').addEventListener('click', (e) => {
+                        if (e.target.classList.contains('quiz-option')) {
+                            const selectedIndex = parseInt(e.target.dataset.index);
+                            const resultEl = document.getElementById('quiz-result');
+                            if (selectedIndex === currentQuestion.answer) {
+                                resultEl.innerHTML = `<p class="text-green-600 font-bold">정답입니다!</p><p class="text-sm">${currentQuestion.explanation}</p>`;
+                                resultEl.className = 'mt-4 p-2 rounded bg-green-50 border border-green-200';
+                            } else {
+                                resultEl.innerHTML = `<p class="text-red-600 font-bold">오답입니다.</p><p class="text-sm">${currentQuestion.explanation}</p>`;
+                                 resultEl.className = 'mt-4 p-2 rounded bg-red-50 border border-red-200';
+                            }
+                            document.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
+                        }
+                    }, { once: true });
+                });
+            }
+
+            function init() {
+                const container = canvas.parentElement;
+                const dpr = window.devicePixelRatio || 1;
+                const rect = container.getBoundingClientRect();
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.width * 0.65 * dpr;
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.width * 0.65}px`;
+                ctx.scale(dpr, dpr);
+                width = canvas.width / dpr;
+                height = canvas.height / dpr;
+                margin = { top: 30, right: 70, bottom: 40, left: 60 };
+                if (Object.keys(state).length === 0) resetState();
+                else update();
+            }
+            return { init, setupEventListeners };
+        })();
+        
+        // --- 정부 개입 모듈 ---
+        const govModule = (() => {
+            const canvas = document.getElementById('govCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            const csEl = document.getElementById('gov-cs');
+            const psEl = document.getElementById('gov-ps');
+            const taxEl = document.getElementById('gov-tax-revenue');
+            const tsEl = document.getElementById('gov-ts');
+            const dwlEl = document.getElementById('gov-dwl');
+            const consumerBurdenEl = document.getElementById('gov-consumer-burden');
+            const producerBurdenEl = document.getElementById('gov-producer-burden');
+            const taxIncidenceInfoEl = document.getElementById('tax-incidence-info');
+            const ceilingSlider = document.getElementById('price-ceiling-slider');
+            const ceilingValueEl = document.getElementById('price-ceiling-value');
+            const floorSlider = document.getElementById('price-floor-slider');
+            const floorValueEl = document.getElementById('price-floor-value');
+            const taxSlider = document.getElementById('tax-slider');
+            const taxValueEl = document.getElementById('tax-value');
+            const taxTargetRadios = document.querySelectorAll('input[name="tax-target"]');
+            const demandElasticitySlider = document.getElementById('gov-demand-elasticity');
+            const supplyElasticitySlider = document.getElementById('gov-supply-elasticity');
+            const unitBtns = document.querySelectorAll('.gov-unit-btn');
+            const resetBtn = document.getElementById('gov-reset-btn');
+            const quizBtn = document.getElementById('gov-quiz-btn');
+
+            let state = {};
+            const defaultState = {
+                demand: { intercept: 100, slope: -1 },
+                supply: { intercept: 0, slope: 1 },
+                priceCeiling: 0,
+                priceFloor: 0,
+                tax: 0,
+                taxTarget: 'producer',
+            };
+            let width, height, margin;
+            
+            const toCanvasX = q => margin.left + (q / 110) * (width - margin.left - margin.right);
+            const toCanvasY = p => height - margin.bottom - (p / 110) * (height - margin.top - margin.bottom);
+            const getP_from_demand = q => (q - state.demand.intercept) / state.demand.slope;
+            const getP_from_supply = q => (q - state.supply.intercept) / state.supply.slope;
+
+            function calculateEquilibrium(d, s) {
+                if (s.slope === d.slope) return { price: Infinity, quantity: Infinity };
+                const price = (d.intercept - s.intercept) / (s.slope - d.slope);
+                const quantity = d.intercept + d.slope * price;
+                return { price, quantity };
+            }
+
+            function resetState() {
+                state = JSON.parse(JSON.stringify(defaultState));
+                ceilingSlider.value = 0;
+                floorSlider.value = 0;
+                taxSlider.value = 0;
+                demandElasticitySlider.value = 1;
+                supplyElasticitySlider.value = 1;
+                taxTargetRadios[0].checked = true;
+                update();
+            }
+
+            function update() {
+                const eq = calculateEquilibrium({intercept: 100, slope: -1}, {intercept: 0, slope: 1}); // Use base curves for stable pivot
+                
+                state.demand.slope = -1 * parseFloat(demandElasticitySlider.value) * (eq.quantity / eq.price);
+                state.supply.slope = parseFloat(supplyElasticitySlider.value) * (eq.quantity / eq.price);
+                
+                state.demand.intercept = eq.quantity - state.demand.slope * eq.price;
+                state.supply.intercept = eq.quantity - state.supply.slope * eq.price;
+                
+                draw();
+            }
+
+            function drawGrid() {
+                ctx.beginPath();
+                ctx.strokeStyle = '#e5e7eb';
+                ctx.fillStyle = '#6b7280';
+                ctx.font = '12px Noto Sans KR';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                for (let i = 20; i <= 100; i += 20) {
+                    const y = toCanvasY(i);
+                    ctx.moveTo(margin.left, y);
+                    ctx.lineTo(width - margin.right, y);
+                    ctx.fillText(Math.round(i), margin.left - 25, y);
+                    const x = toCanvasX(i);
+                    ctx.moveTo(x, height - margin.bottom);
+                    ctx.lineTo(x, margin.top);
+                    ctx.fillText(Math.round(i), x, height - margin.bottom + 15);
+                }
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(margin.left, margin.top);
+                ctx.lineTo(margin.left, height - margin.bottom);
+                ctx.lineTo(width - margin.right, height - margin.bottom);
+                ctx.strokeStyle = '#374151';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                ctx.fillStyle = '#374151';
+                ctx.font = '14px Noto Sans KR';
+                ctx.textAlign = 'start';
+                ctx.textBaseline = 'alphabetic';
+                ctx.fillText('가격(P)', margin.left - 50, margin.top - 5);
+                ctx.fillText('수량(Q)', width - margin.right + 5, height - margin.bottom + 5);
+            }
+
+            function draw() {
+                ctx.clearRect(0, 0, width, height);
+                drawGrid();
+                
+                const drawCurve = (curve, color, label, dashed = false) => {
+                    ctx.beginPath();
+                    let lastX, lastY;
+                    for (let p = 0; p <= 110; p += 1) {
+                        const q = curve.intercept + curve.slope * p;
+                        if(q >= 0 && q <= 110) {
+                            const x = toCanvasX(q);
+                            const y = toCanvasY(p);
+                            if(p === 0 || q <= 0.1) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+                            lastX = x; lastY = y;
+                        }
+                    }
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 3;
+                    if (dashed) ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    if (dashed) ctx.setLineDash([]);
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 14px Noto Sans KR';
+                    ctx.fillText(label, lastX + 5, lastY - 5);
+                };
+                
+                let demandCurve = state.demand;
+                let supplyCurve = state.supply;
+                
+                const marketEq = calculateEquilibrium(demandCurve, supplyCurve);
+                
+                let p_trade = marketEq.price;
+                let q_trade = marketEq.quantity;
+                let p_consumer = p_trade;
+                let p_producer = p_trade;
+
+                if (state.tax > 0) {
+                    if (state.taxTarget === 'producer') {
+                        const supplyWithTax = { ...supplyCurve, intercept: supplyCurve.intercept - supplyCurve.slope * state.tax };
+                        const taxEq = calculateEquilibrium(demandCurve, supplyWithTax);
+                        q_trade = taxEq.quantity;
+                        p_consumer = taxEq.price;
+                        p_producer = p_consumer - state.tax;
+                        drawCurve(supplyWithTax, '#f97316', '공급+세금', true);
+                    } else { // consumer tax
+                        const demandWithTax = { ...demandCurve, intercept: demandCurve.intercept - Math.abs(demandCurve.slope) * state.tax };
+                        const taxEq = calculateEquilibrium(demandWithTax, supplyCurve);
+                        q_trade = taxEq.quantity;
+                        p_producer = taxEq.price;
+                        p_consumer = p_producer + state.tax;
+                        drawCurve(demandWithTax, '#3b82f6', '수요-세금', true);
+                    }
+                } else if (state.priceCeiling > 0 && state.priceCeiling < marketEq.price) {
+                    p_trade = state.priceCeiling;
+                    const q_demanded = demandCurve.intercept + demandCurve.slope * p_trade;
+                    const q_supplied = supplyCurve.intercept + supplyCurve.slope * p_trade;
+                    q_trade = Math.min(q_demanded, q_supplied);
+                    p_consumer = p_producer = p_trade;
+                } else if (state.priceFloor > 0 && state.priceFloor > marketEq.price) {
+                    p_trade = state.priceFloor;
+                    const q_demanded = demandCurve.intercept + demandCurve.slope * p_trade;
+                    const q_supplied = supplyCurve.intercept + supplyCurve.slope * p_trade;
+                    q_trade = Math.min(q_demanded, q_supplied);
+                    p_consumer = p_producer = p_trade;
+                }
+                
+                drawCurve(demandCurve, '#3b82f6', '수요');
+                drawCurve(supplyCurve, '#f97316', '공급');
+
+                const max_p = getP_from_demand(0);
+                const min_p_supply = getP_from_supply(0);
+
+                const cs_poly = [{x:0, y:p_consumer}, {x:q_trade, y:p_consumer}, {x:q_trade, y:getP_from_demand(q_trade)}, {x:0, y:max_p}];
+                const ps_poly = [{x:0, y:min_p_supply}, {x:q_trade, y:getP_from_supply(q_trade)}, {x:q_trade, y:p_producer}, {x:0, y:p_producer}];
+                fillArea(cs_poly, 'rgba(59, 130, 246, 0.3)');
+                fillArea(ps_poly, 'rgba(249, 115, 22, 0.3)');
+                
+                let cs = 0.5 * q_trade * (max_p - getP_from_demand(q_trade)) + (getP_from_demand(q_trade) - p_consumer) * q_trade;
+                let ps = 0.5 * q_trade * (getP_from_supply(q_trade) - min_p_supply) + (p_producer - getP_from_supply(q_trade)) * q_trade;
+                let taxRevenue = 0;
+                let consumerBurden = 0;
+                let producerBurden = 0;
+                
+                if (state.tax > 0) {
+                    const tax_poly = [{x:0, y:p_producer}, {x:q_trade, y:p_producer}, {x:q_trade, y:p_consumer}, {x:0, y:p_consumer}];
+                    fillArea(tax_poly, 'rgba(34, 197, 94, 0.3)');
+                    taxRevenue = q_trade * state.tax;
+                    consumerBurden = q_trade * (p_consumer - marketEq.price);
+                    producerBurden = q_trade * (marketEq.price - p_producer);
+                    drawTextInArea("정부잉여", tax_poly, ctx, toCanvasX, toCanvasY);
+                }
+                
+                const totalSurplus = cs + ps + taxRevenue;
+                const maxTotalSurplus = 0.5 * marketEq.quantity * (max_p - min_p_supply);
+                const dwl = maxTotalSurplus - totalSurplus;
+
+                if (dwl > 0.1) {
+                   const eq_point = {x: marketEq.quantity, y: marketEq.price};
+                   const top_point = {x: q_trade, y: getP_from_demand(q_trade)};
+                   const bottom_point = {x: q_trade, y: getP_from_supply(q_trade)};
+                   const dwl_poly = [top_point, eq_point, bottom_point];
+                   fillArea(dwl_poly, 'rgba(107, 114, 128, 0.4)');
+                   drawTextInArea("자중손실", dwl_poly, ctx, toCanvasX, toCanvasY);
+                }
+
+                if (state.priceCeiling > 0) {
+                    const isEffective = state.priceCeiling < marketEq.price;
+                    drawPriceLine(state.priceCeiling, `가격상한${isEffective ? '' : ' (실효성 없음)'}`, '#ef4444');
+                }
+                if (state.priceFloor > 0) {
+                    const isEffective = state.priceFloor > marketEq.price;
+                    drawPriceLine(state.priceFloor, `가격하한${isEffective ? '' : ' (실효성 없음)'}`, '#16a34a');
+                }
+
+                drawTextInArea("소비자잉여", cs_poly, ctx, toCanvasX, toCanvasY);
+                drawTextInArea("생산자잉여", ps_poly, ctx, toCanvasX, toCanvasY);
+
+                updateUI(cs, ps, taxRevenue, totalSurplus, dwl, consumerBurden, producerBurden);
+            }
+
+            function drawTextInArea(text, poly, ctx, toX, toY) {
+                let sumX = 0, sumY = 0;
+                poly.forEach(p => { sumX += p.x; sumY += p.y; });
+                const centerX = toX(sumX / poly.length);
+                const centerY = toY(sumY / poly.length);
+                
+                ctx.fillStyle = '#1f2937';
+                ctx.font = 'bold 12px Noto Sans KR';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, centerX, centerY);
+                ctx.textAlign = 'start';
+            }
+
+            function fillArea(points, color) {
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.moveTo(toCanvasX(points[0].x), toCanvasY(points[0].y));
+                for(let i=1; i < points.length; i++) {
+                    ctx.lineTo(toCanvasX(points[i].x), toCanvasY(points[i].y));
+                }
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            function drawPriceLine(price, label, color) {
+                const y = toCanvasY(price);
+                ctx.beginPath();
+                ctx.moveTo(margin.left, y);
+                ctx.lineTo(width - margin.right, y);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([8, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = color;
+                ctx.font = 'bold 12px Noto Sans KR';
+                ctx.fillText(label, margin.left + 5, y - 8);
+            }
+
+            function updateUI(cs, ps, tax, ts, dwl, consumerBurden, producerBurden) {
+                csEl.textContent = Math.round(cs);
+                psEl.textContent = Math.round(ps);
+                taxEl.textContent = Math.round(tax);
+                tsEl.textContent = Math.round(ts);
+                dwlEl.textContent = Math.round(dwl);
+
+                if (state.tax > 0) {
+                    taxIncidenceInfoEl.style.display = 'block';
+                    consumerBurdenEl.textContent = Math.round(consumerBurden);
+                    producerBurdenEl.textContent = Math.round(producerBurden);
+                } else {
+                    taxIncidenceInfoEl.style.display = 'none';
+                }
+
+                ceilingValueEl.textContent = state.priceCeiling > 0 ? Math.round(state.priceCeiling) : 'OFF';
+                floorValueEl.textContent = state.priceFloor > 0 ? Math.round(state.priceFloor) : 'OFF';
+                taxValueEl.textContent = Math.round(state.tax);
+            }
+
+            function setupEventListeners() {
+                window.addEventListener('resize', init);
+                resetBtn.addEventListener('click', resetState);
+                quizBtn.addEventListener('click', showQuiz);
+                
+                [demandElasticitySlider, supplyElasticitySlider].forEach(slider => {
+                    slider.addEventListener('input', update);
+                });
+
+                unitBtns.forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const type = e.target.dataset.type;
+                        if (type === 'demand') demandElasticitySlider.value = 1;
+                        else supplyElasticitySlider.value = 1;
+                        update();
+                    });
+                });
+
+                ceilingSlider.addEventListener('input', (e) => {
+                    state.priceCeiling = parseFloat(e.target.value);
+                    if (state.priceCeiling > 0) {
+                        state.priceFloor = 0; floorSlider.value = 0;
+                        state.tax = 0; taxSlider.value = 0;
+                    }
+                    update();
+                });
+                floorSlider.addEventListener('input', (e) => {
+                    state.priceFloor = parseFloat(e.target.value);
+                     if (state.priceFloor > 0) {
+                        state.priceCeiling = 0; ceilingSlider.value = 0;
+                        state.tax = 0; taxSlider.value = 0;
+                    }
+                    update();
+                });
+                taxSlider.addEventListener('input', (e) => {
+                    state.tax = parseFloat(e.target.value);
+                     if (state.tax > 0) {
+                        state.priceCeiling = 0; ceilingSlider.value = 0;
+                        state.priceFloor = 0; floorSlider.value = 0;
+                    }
+                    update();
+                });
+                taxTargetRadios.forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        state.taxTarget = e.target.value;
+                        update();
+                    });
+                });
+            }
+
+            function showQuiz() {
+                const questions = [
+                    { q: "수요가 완전 비탄력적일 때, 생산자에게 세금을 부과하면 누가 세금을 모두 부담할까요?", options: ["소비자", "생산자", "반반 부담", "정부"], answer: 0, explanation: "수요가 완전 비탄력적이면 소비자는 가격 변화에 반응하지 않으므로, 생산자는 세금 전액을 가격에 전가할 수 있습니다. 따라서 소비자가 모든 세금을 부담합니다." },
+                    { q: "시장 균형 가격보다 낮은 수준에서 가격상한제를 실시하면 어떤 현상이 발생할까요?", options: ["초과 공급", "초과 수요", "자중손실 없음", "생산량 증가"], answer: 1, explanation: "효과적인 가격상한제는 가격을 균형보다 낮게 설정하여 수요량을 늘리고 공급량을 줄여 초과 수요를 발생시킵니다." }
+                ];
+                const currentQuestion = questions[Math.floor(Math.random() * questions.length)];
+                let html = `<p class="mb-4">${currentQuestion.q}</p><div id="quiz-options" class="space-y-2">`;
+                currentQuestion.options.forEach((opt, index) => {
+                    html += `<button class="quiz-option block w-full text-left p-2 border rounded hover:bg-gray-100" data-index="${index}">${opt}</button>`;
+                });
+                html += `</div><div id="quiz-result" class="mt-4 p-2 rounded"></div>`;
+                showModal('정부 개입 퀴즈', html, () => {
+                     document.getElementById('quiz-options').addEventListener('click', (e) => {
+                        if (e.target.classList.contains('quiz-option')) {
+                            const selectedIndex = parseInt(e.target.dataset.index);
+                            const resultEl = document.getElementById('quiz-result');
+                            if (selectedIndex === currentQuestion.answer) {
+                                resultEl.innerHTML = `<p class="text-green-600 font-bold">정답입니다!</p><p class="text-sm">${currentQuestion.explanation}</p>`;
+                                resultEl.className = 'mt-4 p-2 rounded bg-green-50 border border-green-200';
+                            } else {
+                                resultEl.innerHTML = `<p class="text-red-600 font-bold">오답입니다.</p><p class="text-sm">${currentQuestion.explanation}</p>`;
+                                 resultEl.className = 'mt-4 p-2 rounded bg-red-50 border border-red-200';
+                            }
+                            document.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
+                        }
+                    }, { once: true });
+                });
+            }
+
+            function init() {
+                const container = canvas.parentElement;
+                const dpr = window.devicePixelRatio || 1;
+                const rect = container.getBoundingClientRect();
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.width * 0.65 * dpr;
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.width * 0.65}px`;
+                ctx.scale(dpr, dpr);
+                width = canvas.width / dpr;
+                height = canvas.height / dpr;
+                margin = { top: 30, right: 70, bottom: 40, left: 60 };
+                if (Object.keys(state).length === 0) resetState();
+                else update();
+            }
+            return { init, setupEventListeners };
+        })();
+
+        // --- 생산가능곡선 모듈 (ppcModule) ---
+        const ppcModule = (() => {
+            const canvas = document.getElementById('ppcCanvas');
+            const ctx = canvas.getContext('2d');
+            const tooltip = createTooltip(canvas, document.getElementById('ppc-tooltip'));
+
+            let state = {};
+            const defaultState = {
+                maxX: 60,
+                maxY: 80,
+                prodPoint: { x: 30, y: 69.3 }
+            };
+            let width, height, margin;
+
+            function resetState() {
+                state = JSON.parse(JSON.stringify(defaultState));
+                update();
+            }
+
+            const toCanvasX = x => margin.left + (x / 110) * (width - margin.left - margin.right);
+            const toCanvasY = y => height - margin.bottom - (y / 110) * (height - margin.top - margin.bottom);
+            const fromCanvasX = x => ((x - margin.left) / (width - margin.left - margin.right)) * 110;
+            const fromCanvasY = y => ((height - margin.bottom - y) / (height - margin.top - margin.bottom)) * 110;
+
+            function getYOnPPC(x) {
+                const term = 1 - Math.pow(x / state.maxX, 2);
+                return term >= 0 ? state.maxY * Math.sqrt(term) : 0;
+            }
+            
+            function drawGrid() {
+                 ctx.beginPath();
+                ctx.strokeStyle = '#e5e7eb';
+                ctx.fillStyle = '#6b7280';
+                ctx.font = '12px Noto Sans KR';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                for (let i = 20; i <= 100; i += 20) {
+                    ctx.fillText(Math.round(i), margin.left - 25, toCanvasY(i));
+                    ctx.fillText(Math.round(i), toCanvasX(i), height - margin.bottom + 15);
+                }
+                ctx.stroke();
+                ctx.textAlign = 'start';
+                ctx.textBaseline = 'alphabetic';
+            }
+
+            function draw() {
+                ctx.clearRect(0, 0, width, height);
+                drawGrid();
+                
+                ctx.beginPath();
+                ctx.moveTo(margin.left, margin.top);
+                ctx.lineTo(margin.left, height - margin.bottom);
+                ctx.lineTo(width - margin.right, height - margin.bottom);
+                ctx.strokeStyle = '#374151';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = '#374151';
+                ctx.font = '14px Noto Sans KR';
+                ctx.fillText('Y재', margin.left - 45, margin.top - 5);
+                ctx.fillText('X재', width - margin.right + 5, height - margin.bottom + 5);
+
+                ctx.beginPath();
+                for (let x = 0; x <= state.maxX; x += 0.5) {
+                    const y = getYOnPPC(x);
+                    if (x === 0) ctx.moveTo(toCanvasX(x), toCanvasY(y));
+                    else ctx.lineTo(toCanvasX(x), toCanvasY(y));
+                }
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                if (state.prodPoint) {
+                    const { x, y } = state.prodPoint;
+                    const cx = toCanvasX(x);
+                    const cy = toCanvasY(y);
+                    drawPoint(cx, cy, '#f97316');
+                    ctx.fillStyle = '#1f2937';
+                    ctx.font = 'bold 12px Noto Sans KR';
+                    ctx.fillText(`(X: ${Math.round(x)}, Y: ${Math.round(y)})`, cx + 10, cy - 10);
+                }
+            }
+
+            function drawPoint(x, y, color) {
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            function updateUI() {
+                if (!state.prodPoint) return;
+                const { x, y } = state.prodPoint;
+                document.getElementById('ppc-x-prod').textContent = Math.round(x);
+                document.getElementById('ppc-y-prod').textContent = Math.round(y);
+                const yOnPPC = getYOnPPC(x);
+                const efficiencyEl = document.getElementById('ppc-efficiency');
+                if (y > yOnPPC + 0.1) {
+                    efficiencyEl.textContent = '생산 불가능';
+                    efficiencyEl.className = 'font-bold text-red-600';
+                } else if (Math.abs(y - yOnPPC) < 1) {
+                    efficiencyEl.textContent = '효율적';
+                    efficiencyEl.className = 'font-bold text-green-600';
+                } else {
+                    efficiencyEl.textContent = '비효율적';
+                    efficiencyEl.className = 'font-bold text-yellow-600';
+                }
+            }
+            
+            function update() { draw(); updateUI(); }
+
+            function setupEventListeners() {
+                window.addEventListener('resize', init);
+                document.getElementById('ppc-reset-btn').addEventListener('click', resetState);
+                document.getElementById('tech-advance-btn').addEventListener('click', () => {
+                    const oldState = JSON.parse(JSON.stringify(state));
+                    const targetMaxX = oldState.maxX * 1.1;
+                    const targetMaxY = oldState.maxY * 1.1;
+                    animateValue(0, 1, 500, (progress) => {
+                        state.maxX = oldState.maxX + (targetMaxX - oldState.maxX) * progress;
+                        state.maxY = oldState.maxY + (targetMaxY - oldState.maxY) * progress;
+                        update();
+                    });
+                });
+                document.getElementById('ppc-quiz-btn').addEventListener('click', showQuiz);
+                
+                let isDragging = false;
+                const handlePointerMove = (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    const mouseX = clientX - rect.left;
+                    const mouseY = clientY - rect.top;
+                    const worldX = fromCanvasX(mouseX);
+                    const worldY = fromCanvasY(mouseY);
+                    if (worldX >= 0 && worldX <= 110 && worldY >= 0 && worldY <= 110) {
+                        state.prodPoint = { x: worldX, y: worldY };
+                        update();
+                    }
+                };
+                canvas.addEventListener('pointerdown', (e) => { isDragging = true; handlePointerMove(e); });
+                canvas.addEventListener('pointermove', (e) => { if(isDragging) handlePointerMove(e); });
+                canvas.addEventListener('pointerup', () => { isDragging = false; });
+                canvas.addEventListener('pointerleave', () => { isDragging = false; });
+                canvas.addEventListener('touchstart', (e) => { e.preventDefault(); isDragging = true; handlePointerMove(e); });
+                canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if(isDragging) handlePointerMove(e); });
+                canvas.addEventListener('touchend', () => { isDragging = false; });
+            }
+
+            function showQuiz() {
+                const q = {
+                    q: "생산가능곡선 위의 한 점은 무엇을 의미할까요?",
+                    options: ["생산이 불가능한 상태", "자원을 낭비하고 있는 비효율적 상태", "자원을 최대한 활용한 효율적 상태", "알 수 없음"],
+                    answer: 2,
+                    explanation: "생산가능곡선(PPC) 위의 모든 점은 주어진 자원과 기술을 최대한 활용하여 생산할 수 있는 상품의 조합, 즉 효율적인 생산 상태를 나타냅니다."
+                };
+                let html = `<p class="mb-4">${q.q}</p><div id="quiz-options" class="space-y-2">`;
+                q.options.forEach((opt, index) => {
+                    html += `<button class="quiz-option block w-full text-left p-2 border rounded hover:bg-gray-100" data-index="${index}">${opt}</button>`;
+                });
+                html += `</div><div id="quiz-result" class="mt-4 p-2 rounded"></div>`;
+                showModal('생산가능곡선 퀴즈', html, () => {
+                    document.getElementById('quiz-options').addEventListener('click', (e) => {
+                        if (e.target.classList.contains('quiz-option')) {
+                            const selectedIndex = parseInt(e.target.dataset.index);
+                            const resultEl = document.getElementById('quiz-result');
+                            if (selectedIndex === q.answer) {
+                                resultEl.innerHTML = `<p class="text-green-600 font-bold">정답입니다!</p><p class="text-sm">${q.explanation}</p>`;
+                                resultEl.className = 'mt-4 p-2 rounded bg-green-50 border border-green-200';
+                            } else {
+                                resultEl.innerHTML = `<p class="text-red-600 font-bold">오답입니다.</p><p class="text-sm">${q.explanation}</p>`;
+                                 resultEl.className = 'mt-4 p-2 rounded bg-red-50 border border-red-200';
+                            }
+                            document.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
+                        }
+                    }, { once: true });
+                });
+            }
+
+            function init() {
+                const container = canvas.parentElement;
+                const dpr = window.devicePixelRatio || 1;
+                const rect = container.getBoundingClientRect();
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.width * 0.65 * dpr;
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.width * 0.65}px`;
+                ctx.scale(dpr, dpr);
+                width = canvas.width / dpr;
+                height = canvas.height / dpr;
+                margin = { top: 30, right: 30, bottom: 40, left: 50 };
+                if (Object.keys(state).length === 0) resetState();
+                else update();
+            }
+
+            return { init, setupEventListeners };
+        })();
+        
+        // --- 무역과 비교우위 모듈 (tradeModule) ---
+        const tradeModule = (() => {
+            const countryAX = document.getElementById('countryA-x');
+            const countryAY = document.getElementById('countryA-y');
+            const countryBX = document.getElementById('countryB-x');
+            const countryBY = document.getElementById('countryB-y');
+            const oppCostA = document.getElementById('opp-cost-A');
+            const oppCostB = document.getElementById('opp-cost-B');
+            const simulateBtn = document.getElementById('trade-simulate-btn');
+            const resultPanel = document.getElementById('trade-result');
+            const absAdvResult = document.getElementById('absolute-advantage-result');
+            const compAdvResult = document.getElementById('comparative-advantage-result');
+            const tradeGainsResult = document.getElementById('trade-gains-result');
+
+            function calculateOppCost() {
+                const ax = parseFloat(countryAX.value) || 1;
+                const ay = parseFloat(countryAY.value) || 1;
+                const bx = parseFloat(countryBX.value) || 1;
+                const by = parseFloat(countryBY.value) || 1;
+                const oppA = ax / ay;
+                const oppB = bx / by;
+                oppCostA.textContent = oppA.toFixed(2);
+                oppCostB.textContent = oppB.toFixed(2);
+                return { ax, ay, bx, by, oppA, oppB };
+            }
+
+            function simulate() {
+                const { ax, ay, bx, by, oppA, oppB } = calculateOppCost();
+                resultPanel.classList.remove('hidden');
+                let absX = '없음';
+                if (ax > bx) absX = '국가 A'; else if (bx > ax) absX = '국가 B';
+                let absY = '없음';
+                if (ay > by) absY = '국가 A'; else if (by > ay) absY = '국가 B';
+                absAdvResult.innerHTML = `X재 절대우위: <strong class="text-indigo-600">${absX}</strong>, Y재 절대우위: <strong class="text-indigo-600">${absY}</strong>`;
+                let compY, compX;
+                if (oppA < oppB) { compY = '국가 A'; compX = '국가 B'; }
+                else if (oppB < oppA) { compY = '국가 B'; compX = '국가 A'; }
+                else { compY = '없음'; compX = '없음'; }
+                compAdvResult.innerHTML = `Y재 비교우위: <strong class="text-indigo-600">${compY}</strong> (Y재 특화), X재 비교우위: <strong class="text-indigo-600">${compX}</strong> (X재 특화)`;
+                if (compY !== '없음') {
+                    const tradeRatio = (oppA + oppB) / 2;
+                    let gainsText = `${compY}는 Y재를, ${compX}는 X재를 특화 생산하여 교역하면 양국 모두 이득을 봅니다. `;
+                    gainsText += `예를 들어, Y재 1단위를 X재 ${tradeRatio.toFixed(2)}단위와 교환하면, `;
+                    if (compY === '국가 A') gainsText += `국가 A는 Y재 1단위를 포기하고 X재 ${tradeRatio.toFixed(2)}를 얻어 직접 생산할 때(${oppA.toFixed(2)})보다 이득입니다.`;
+                    else gainsText += `국가 B는 Y재 1단위를 포기하고 X재 ${tradeRatio.toFixed(2)}를 얻어 직접 생산할 때(${oppB.toFixed(2)})보다 이득입니다.`;
+                    tradeGainsResult.textContent = gainsText;
+                } else {
+                    tradeGainsResult.textContent = '두 국가의 기회비용이 같아 무역의 이익이 발생하지 않습니다.';
+                }
+            }
+            function setupEventListeners() {
+                [countryAX, countryAY, countryBX, countryBY].forEach(input => input.addEventListener('input', calculateOppCost));
+                simulateBtn.addEventListener('click', simulate);
+            }
+            function init() { calculateOppCost(); }
+            return { init, setupEventListeners };
+        })();
+        
+        // --- 시나리오 관리 모듈 (storageModule) ---
+        const storageModule = (() => {
+            const scenarioNameInput = document.getElementById('scenario-name');
+            const saveBtn = document.getElementById('save-scenario-btn');
+            const listEl = document.getElementById('scenario-list');
+            const noScenariosEl = document.getElementById('no-scenarios');
+            const STORAGE_KEY = 'econSimScenarios_v6';
+
+            function getScenarios() { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+            function saveScenarios(scenarios) { localStorage.setItem(STORAGE_KEY, JSON.stringify(scenarios)); }
+
+            function renderList() {
+                const scenarios = getScenarios();
+                listEl.innerHTML = '';
+                if (scenarios.length === 0) {
+                    noScenariosEl.style.display = 'block';
+                } else {
+                    noScenariosEl.style.display = 'none';
+                    scenarios.forEach((scenario, index) => {
+                        const li = document.createElement('li');
+                        li.className = 'flex justify-between items-center p-3 bg-gray-50 rounded-md border';
+                        li.innerHTML = `<span>${scenario.name}</span>
+                            <div class="space-x-2">
+                                <button data-action="load" data-index="${index}" class="text-blue-500 hover:text-blue-700"><i class="fas fa-upload"></i> 불러오기</button>
+                                <button data-action="delete" data-index="${index}" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i> 삭제</button>
+                            </div>`;
+                        listEl.appendChild(li);
+                    });
+                }
+            }
+            
+            function saveCurrentScenario() {
+                const name = scenarioNameInput.value.trim();
+                if (!name) { alert('시나리오 이름을 입력해주세요.'); return; }
+                const dsState = dsModule.getState();
+                const scenarios = getScenarios();
+                scenarios.push({ name, state: dsState });
+                saveScenarios(scenarios);
+                scenarioNameInput.value = '';
+                renderList();
+                alert('시나리오가 저장되었습니다.');
+            }
+
+            function handleListClick(e) {
+                const button = e.target.closest('button');
+                if (!button) return;
+                const action = button.dataset.action;
+                const index = parseInt(button.dataset.index);
+                let scenarios = getScenarios();
+                if (action === 'load') {
+                    const scenario = scenarios[index];
+                    if (scenario) {
+                        dsModule.loadState(scenario.state);
+                        tabs.querySelector('button[data-tab="demand-supply"]').click();
+                        alert(`'${scenario.name}' 시나리오를 불러왔습니다.`);
+                    }
+                } else if (action === 'delete') {
+                    if (confirm(`'${scenarios[index].name}' 시나리오를 정말 삭제하시겠습니까?`)) {
+                        scenarios.splice(index, 1);
+                        saveScenarios(scenarios);
+                        renderList();
+                    }
+                }
+            }
+            function setupEventListeners() {
+                saveBtn.addEventListener('click', saveCurrentScenario);
+                listEl.addEventListener('click', handleListClick);
+            }
+            function init() { renderList(); }
+            return { init, setupEventListeners };
+        })();
+
+        // --- 초기화 ---
+        dsModule.init();
+        dsModule.setupEventListeners();
+        elasticityModule.setupEventListeners();
+        govModule.setupEventListeners();
+        ppcModule.setupEventListeners();
+        tradeModule.init();
+        tradeModule.setupEventListeners();
+        storageModule.setupEventListeners();
+    });
+    </script>
+</body>
+</html>
